@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Customer, Route, Collection, CollectionStatus, PaymentType, CustomerStatus, GlobalSettings } from './types';
-import { LayoutDashboard, Users, Calculator, FileText, Menu, Plus, RefreshCw, BarChart3, Settings as SettingsIcon, Bell } from 'lucide-react';
+import { Customer, Route, Collection, CollectionStatus, PaymentType, CustomerStatus, GlobalSettings, User, LedgerEntry, AuditLog } from './types';
+import { LayoutDashboard, Users, Calculator, FileText, Menu, Plus, RefreshCw, BarChart3, Settings as SettingsIcon, Bell, BookOpen, ShieldAlert, LogOut } from 'lucide-react';
 import Dashboard from './components/Dashboard';
 import CollectionForm from './components/CollectionForm';
 import ChequeManager from './components/ChequeManager';
@@ -8,6 +8,9 @@ import CustomerManager from './components/CustomerManager';
 import Reconciliation from './components/Reconciliation';
 import Reports from './components/Reports';
 import Settings from './components/Settings';
+import Login from './components/Login';
+import Ledger from './components/Ledger';
+import AuditLogs from './components/AuditLogs';
 
 // Mock Initial Data
 const INITIAL_CUSTOMERS: Customer[] = [
@@ -51,19 +54,8 @@ const INITIAL_COLLECTIONS: Collection[] = [
         payment_type: PaymentType.CASH,
         amount: 5000,
         status: CollectionStatus.RECEIVED,
-        collection_date: '2023-10-25'
-    },
-    {
-        collection_id: 'CL002',
-        customer_id: 'C002',
-        payment_type: PaymentType.CHEQUE,
-        amount: 15000,
-        status: CollectionStatus.PENDING,
-        cheque_number: 'CHQ998877',
-        bank: 'BOC',
-        branch: 'City',
-        realize_date: '2023-11-15',
-        collection_date: '2023-10-26'
+        collection_date: '2023-10-25',
+        created_by: 'U-001'
     }
 ];
 
@@ -73,18 +65,24 @@ const INITIAL_SETTINGS: GlobalSettings = {
   enable_cheque_camera: true
 };
 
-type View = 'DASHBOARD' | 'COLLECTIONS' | 'CUSTOMERS' | 'CHEQUES' | 'RECONCILIATION' | 'REPORTS' | 'SETTINGS';
+type View = 'DASHBOARD' | 'COLLECTIONS' | 'CUSTOMERS' | 'CHEQUES' | 'RECONCILIATION' | 'REPORTS' | 'SETTINGS' | 'LEDGER' | 'AUDIT';
 
 const App: React.FC = () => {
+  // Auth State
+  const [user, setUser] = useState<User | null>(null);
+
+  // App State
   const [currentView, setCurrentView] = useState<View>('DASHBOARD');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showCollectionModal, setShowCollectionModal] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
 
-  // Global State
+  // Data State
   const [customers, setCustomers] = useState<Customer[]>(INITIAL_CUSTOMERS);
   const [routes, setRoutes] = useState<Route[]>(INITIAL_ROUTES);
   const [collections, setCollections] = useState<Collection[]>(INITIAL_COLLECTIONS);
+  const [ledger, setLedger] = useState<LedgerEntry[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [settings, setSettings] = useState<GlobalSettings>(INITIAL_SETTINGS);
 
   // Notifications Logic
@@ -95,57 +93,160 @@ const App: React.FC = () => {
     if (returned.length > 0) {
       alerts.push({ id: 'RET', message: `${returned.length} Returned Cheques require action.`, type: 'error' });
     }
-    // Credit Limit check (Mock logic)
-    customers.forEach(c => {
-      // In a real app we'd sum outstanding collections
-      // alerts.push({ id: `CREDIT-${c.customer_id}`, message: `${c.business_name} exceeded credit limit.`, type: 'warning' });
-    });
+    // High outstanding check (mock)
+    if (collections.length > 0) {
+      alerts.push({ id: 'SYNC', message: 'Offline data ready to sync (Simulated).', type: 'info' });
+    }
     return alerts;
   }, [collections, customers]);
 
-  // Toggle for mobile sidebar
-  const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
+  // Helpers
+  const addAuditLog = (action: string, details: string) => {
+    if (!user) return;
+    const newLog: AuditLog = {
+      log_id: `LOG-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      action,
+      performed_by: user.name,
+      details
+    };
+    setAuditLogs(prev => [newLog, ...prev]);
+  };
+
+  const addLedgerEntry = (desc: string, debit: string, credit: string, amount: number, refId: string) => {
+    const entry: LedgerEntry = {
+      entry_id: `LEG-${Date.now()}`,
+      date: new Date().toISOString().split('T')[0],
+      description: desc,
+      debit_account: debit,
+      credit_account: credit,
+      amount: amount,
+      reference_id: refId
+    };
+    setLedger(prev => [entry, ...prev]);
+  };
 
   // Handlers
+  const handleLogin = (u: User) => {
+    setUser(u);
+    addAuditLog('LOGIN', 'User logged into the system');
+  };
+
+  const handleLogout = () => {
+    addAuditLog('LOGOUT', 'User logged out');
+    setUser(null);
+    setCurrentView('DASHBOARD');
+  };
+
   const handleSaveCollection = (newCollectionData: Omit<Collection, 'collection_id'>) => {
     const newCollection: Collection = {
       ...newCollectionData,
-      collection_id: `CL${Date.now()}`
+      collection_id: `CL${Date.now()}`,
+      created_by: user?.uid
     };
+    
+    // 1. Update Collections State
     setCollections(prev => [newCollection, ...prev]);
     setShowCollectionModal(false);
+
+    // 2. Ledger Update (Double Entry)
+    const customerAccount = `Customer:${newCollection.customer_id}`;
+    let debitAccount = 'CashInHand';
+    
+    if (newCollection.payment_type === PaymentType.CHEQUE) debitAccount = 'ChequesInHand';
+    else if (newCollection.payment_type === PaymentType.CARD) debitAccount = 'BankPending';
+    else if (newCollection.payment_type === PaymentType.QR) debitAccount = 'Bank:QR';
+
+    addLedgerEntry(
+      `Collection from ${customers.find(c => c.customer_id === newCollection.customer_id)?.business_name} (${newCollection.payment_type})`,
+      debitAccount,
+      customerAccount,
+      newCollection.amount,
+      newCollection.collection_id
+    );
+
+    // 3. Audit Log
+    addAuditLog('CREATE_COLLECTION', `Created collection ${newCollection.collection_id} of $${newCollection.amount}`);
+  };
+
+  const handleReconcile = (collectionIds: string[], status: CollectionStatus) => {
+    // 1. Update Collections
+    setCollections(prev => prev.map(c => {
+      if (collectionIds.includes(c.collection_id)) {
+        return { ...c, status };
+      }
+      return c;
+    }));
+
+    // 2. Ledger Update based on status
+    collectionIds.forEach(id => {
+      const col = collections.find(c => c.collection_id === id);
+      if (col) {
+        if (status === CollectionStatus.REALIZED) {
+          // Move from ChequesInHand to Bank
+          addLedgerEntry(
+            `Cheque Realized: ${col.cheque_number}`,
+            'Bank:Main',
+            'ChequesInHand',
+            col.amount,
+            col.collection_id
+          );
+        } else if (status === CollectionStatus.RETURNED) {
+          // Reverse the original collection payment (Debit Customer, Credit ChequesInHand)
+          addLedgerEntry(
+            `Cheque Returned: ${col.cheque_number}`,
+            `Customer:${col.customer_id}`,
+            'ChequesInHand',
+            col.amount,
+            col.collection_id
+          );
+        }
+      }
+    });
+
+    // 3. Audit Log
+    addAuditLog('RECONCILE', `Updated status of ${collectionIds.length} collections to ${status}`);
   };
 
   const handleAddCustomer = (c: Customer) => {
-    // Apply defaults if not set
     if (!c.credit_limit) c.credit_limit = settings.default_credit_limit;
     if (!c.credit_period_days) c.credit_period_days = settings.default_credit_period;
     setCustomers([...customers, c]);
+    addAuditLog('ADD_CUSTOMER', `Added new customer ${c.business_name}`);
   };
 
   const handleEditCustomer = (c: Customer) => {
     setCustomers(customers.map(cust => cust.customer_id === c.customer_id ? c : cust));
+    addAuditLog('EDIT_CUSTOMER', `Updated profile for ${c.business_name}`);
   };
 
   const handleAddRoute = (r: Route) => {
     setRoutes([...routes, r]);
+    addAuditLog('ADD_ROUTE', `Added new route ${r.route_name}`);
   };
 
-  const handleReconcile = (collectionIds: string[], status: CollectionStatus) => {
-    setCollections(collections.map(c => collectionIds.includes(c.collection_id) ? { ...c, status } : c));
+  const toggleSidebar = () => {
+    setIsSidebarOpen(!isSidebarOpen);
   };
 
-  const SidebarItem = ({ view, icon: Icon, label }: { view: View; icon: any; label: string }) => (
-    <button
-      onClick={() => { setCurrentView(view); setIsSidebarOpen(false); }}
-      className={`flex items-center w-full px-4 py-3 text-left transition-colors ${
-        currentView === view ? 'bg-brand-50 text-brand-600 border-r-4 border-brand-600' : 'text-gray-600 hover:bg-gray-50'
-      }`}
-    >
-      <Icon size={20} className="mr-3" />
-      <span className="font-medium">{label}</span>
-    </button>
-  );
+  const SidebarItem = ({ view, icon: Icon, label, roles }: { view: View; icon: any; label: string; roles?: string[] }) => {
+    if (roles && user && !roles.includes(user.role)) return null;
+    return (
+      <button
+        onClick={() => { setCurrentView(view); setIsSidebarOpen(false); }}
+        className={`flex items-center w-full px-4 py-3 text-left transition-colors ${
+          currentView === view ? 'bg-brand-50 text-brand-600 border-r-4 border-brand-600' : 'text-gray-600 hover:bg-gray-50'
+        }`}
+      >
+        <Icon size={20} className="mr-3" />
+        <span className="font-medium">{label}</span>
+      </button>
+    );
+  };
+
+  if (!user) {
+    return <Login onLogin={handleLogin} />;
+  }
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -158,16 +259,40 @@ const App: React.FC = () => {
       <aside className={`fixed inset-y-0 left-0 z-30 w-64 bg-white border-r border-gray-200 transform transition-transform duration-200 ease-in-out md:relative md:translate-x-0 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="h-16 flex items-center px-6 border-b border-gray-200">
           <span className="text-xl font-bold text-brand-600">DistriFin</span>
+          <span className="ml-2 text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">{user.role}</span>
         </div>
         <nav className="mt-6 space-y-1">
           <SidebarItem view="DASHBOARD" icon={LayoutDashboard} label="Dashboard" />
-          <SidebarItem view="CUSTOMERS" icon={Users} label="Master Data" />
-          <SidebarItem view="COLLECTIONS" icon={Calculator} label="Collections" />
-          <SidebarItem view="CHEQUES" icon={FileText} label="Cheque Manager" />
-          <SidebarItem view="RECONCILIATION" icon={RefreshCw} label="Reconciliation" />
-          <SidebarItem view="REPORTS" icon={BarChart3} label="Reports" />
-          <SidebarItem view="SETTINGS" icon={SettingsIcon} label="Settings" />
+          
+          <SidebarItem view="COLLECTIONS" icon={Calculator} label="Collections" roles={['ADMIN', 'COLLECTOR', 'ACCOUNTS']} />
+          <SidebarItem view="CUSTOMERS" icon={Users} label="Master Data" roles={['ADMIN', 'COLLECTOR']} />
+          
+          <SidebarItem view="CHEQUES" icon={FileText} label="Cheque Manager" roles={['ADMIN', 'ACCOUNTS']} />
+          <SidebarItem view="RECONCILIATION" icon={RefreshCw} label="Reconciliation" roles={['ADMIN', 'ACCOUNTS']} />
+          <SidebarItem view="LEDGER" icon={BookOpen} label="General Ledger" roles={['ADMIN', 'ACCOUNTS']} />
+          
+          <SidebarItem view="REPORTS" icon={BarChart3} label="Reports" roles={['ADMIN', 'ACCOUNTS']} />
+          
+          <SidebarItem view="AUDIT" icon={ShieldAlert} label="Audit Logs" roles={['ADMIN']} />
+          <SidebarItem view="SETTINGS" icon={SettingsIcon} label="Settings" roles={['ADMIN']} />
         </nav>
+        <div className="absolute bottom-0 w-full border-t border-gray-200 p-4">
+          <div className="flex items-center mb-4">
+            <div className="w-8 h-8 rounded-full bg-brand-100 flex items-center justify-center text-brand-600 font-bold mr-3">
+              {user.name.charAt(0)}
+            </div>
+            <div className="overflow-hidden">
+              <p className="text-sm font-medium text-gray-900 truncate">{user.name}</p>
+              <p className="text-xs text-gray-500 truncate">{user.email}</p>
+            </div>
+          </div>
+          <button 
+            onClick={handleLogout}
+            className="flex items-center w-full px-4 py-2 text-sm text-red-600 hover:bg-red-50 rounded-md transition-colors"
+          >
+            <LogOut size={16} className="mr-2" /> Logout
+          </button>
+        </div>
       </aside>
 
       {/* Main Content */}
@@ -211,14 +336,17 @@ const App: React.FC = () => {
               )}
             </div>
 
-            <button 
-              onClick={() => setShowCollectionModal(true)}
-              className="flex items-center px-4 py-2 bg-brand-600 text-white rounded-md hover:bg-brand-700 transition-colors shadow-sm"
-            >
-              <Plus size={18} className="mr-2" />
-              <span className="hidden sm:inline">New Collection</span>
-              <span className="sm:hidden">New</span>
-            </button>
+            {/* Collection Button only for Allowed Roles */}
+            {['ADMIN', 'COLLECTOR'].includes(user.role) && (
+              <button 
+                onClick={() => setShowCollectionModal(true)}
+                className="flex items-center px-4 py-2 bg-brand-600 text-white rounded-md hover:bg-brand-700 transition-colors shadow-sm"
+              >
+                <Plus size={18} className="mr-2" />
+                <span className="hidden sm:inline">New Collection</span>
+                <span className="sm:hidden">New</span>
+              </button>
+            )}
           </div>
         </header>
 
@@ -275,6 +403,14 @@ const App: React.FC = () => {
 
           {currentView === 'REPORTS' && (
             <Reports collections={collections} customers={customers} routes={routes} />
+          )}
+
+          {currentView === 'LEDGER' && (
+            <Ledger entries={ledger} />
+          )}
+
+          {currentView === 'AUDIT' && (
+            <AuditLogs logs={auditLogs} />
           )}
 
           {currentView === 'SETTINGS' && (

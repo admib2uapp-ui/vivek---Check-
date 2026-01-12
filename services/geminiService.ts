@@ -1,11 +1,9 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
-const apiKey = process.env.API_KEY || '';
-
 // Initialize Gemini
 // Note: We create the instance inside the function to ensure we capture the latest key if it changes, 
 // though strictly in this app structure it's static.
-const getAiClient = () => new GoogleGenAI({ apiKey });
+const getAiClient = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export interface ChequeData {
   cheque_number: string;
@@ -16,7 +14,7 @@ export interface ChequeData {
 }
 
 export const analyzeChequeImage = async (base64Image: string): Promise<ChequeData | null> => {
-  if (!apiKey) {
+  if (!process.env.API_KEY) {
     console.error("No API Key found");
     return null;
   }

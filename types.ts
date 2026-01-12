@@ -17,6 +17,15 @@ export enum CustomerStatus {
   INACTIVE = 'Inactive'
 }
 
+export type UserRole = 'ADMIN' | 'COLLECTOR' | 'ACCOUNTS';
+
+export interface User {
+  uid: string;
+  name: string;
+  email: string;
+  role: UserRole;
+}
+
 export interface Route {
   route_id: string;
   route_name: string;
@@ -53,6 +62,25 @@ export interface Collection {
   realize_date?: string; // YYYY-MM-DD
   collection_date: string; // YYYY-MM-DD
   cheque_image_base64?: string;
+  created_by?: string; // User UID
+}
+
+export interface LedgerEntry {
+  entry_id: string;
+  date: string;
+  description: string;
+  reference_id: string; // Collection ID or Cheque ID
+  debit_account: string; // e.g., 'Cash', 'Bank', 'ChequeInHand'
+  credit_account: string; // e.g., 'Customer:C001', 'Sales'
+  amount: number;
+}
+
+export interface AuditLog {
+  log_id: string;
+  timestamp: string;
+  action: string; // 'CREATE_COLLECTION', 'RECONCILE', etc.
+  performed_by: string; // User Name
+  details: string;
 }
 
 export interface GlobalSettings {
@@ -75,4 +103,6 @@ export interface AppData {
   routes: Route[];
   collections: Collection[];
   settings: GlobalSettings;
+  ledger: LedgerEntry[];
+  auditLogs: AuditLog[];
 }
