@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User, UserRole } from '../types';
-import { Shield, Mail, Lock, Loader2, ChevronRight, AlertCircle, Info, Star } from 'lucide-react';
+import { Shield, Mail, Lock, Loader2, ChevronRight, AlertCircle } from 'lucide-react';
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../services/firebase';
 
@@ -24,30 +24,18 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
       const userCredential = await signInWithEmailAndPassword(auth, email, password);
       const firebaseUser = userCredential.user;
       
-      let role: UserRole = 'COLLECTOR';
-      const normalizedEmail = email.toLowerCase();
-      
-      if (normalizedEmail === 'absiraiva@gmail.com') role = 'ADMIN';
-      else if (normalizedEmail.includes('admin')) role = 'ADMIN';
-      else if (normalizedEmail.includes('accounts')) role = 'ACCOUNTS';
-
+      // The actual role will be fetched in App.tsx from Firestore after this callback
       onLogin({
         uid: firebaseUser.uid,
         name: firebaseUser.displayName || email.split('@')[0],
         email: firebaseUser.email || '',
-        role: role
+        role: 'COLLECTOR' // Default, will be updated by App.tsx observer
       });
     } catch (err: any) {
       setError(err.message || 'Invalid email or password');
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const fillTestAccount = (testEmail: string, testPass: string) => {
-    setEmail(testEmail);
-    setPassword(testPass);
-    setError(null);
   };
 
   const handleResetPassword = async (e: React.FormEvent) => {
@@ -145,55 +133,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
             {isResetMode ? 'Back to Login' : 'Forgot your password?'}
           </button>
         </div>
-
-        {/* Testing Accounts Section */}
-        {!isResetMode && (
-          <div className="mt-8 pt-6 border-t border-gray-100 dark:border-slate-800">
-            <div className="flex items-center gap-2 mb-4 text-gray-400 dark:text-slate-500">
-              <Info size={14} />
-              <span className="text-xs font-bold uppercase tracking-wider">Registered Testing Accounts</span>
-            </div>
-            <div className="grid grid-cols-1 gap-2">
-              <button 
-                type="button"
-                onClick={() => fillTestAccount('absiraiva@gmail.com', 'admin123')}
-                className="flex items-center justify-between p-3 rounded-xl bg-brand-50/50 dark:bg-brand-900/10 border border-brand-200 dark:border-brand-900/30 hover:bg-brand-100 dark:hover:bg-brand-900/20 text-left transition-colors group"
-              >
-                <div className="flex items-center gap-3">
-                  <Star size={16} className="text-amber-500" />
-                  <span className="text-xs font-bold text-brand-900 dark:text-brand-200">absiraiva@gmail.com</span>
-                </div>
-                <ChevronRight size={14} className="text-brand-300 group-hover:text-brand-600" />
-              </button>
-
-              <button 
-                type="button"
-                onClick={() => fillTestAccount('admin@distrifin.com', 'admin123')}
-                className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-slate-800/50 hover:bg-brand-50 dark:hover:bg-brand-900/20 text-left transition-colors group"
-              >
-                <div className="flex items-center gap-3">
-                  <Mail size={14} className="text-gray-400" />
-                  <span className="text-xs font-medium text-gray-700 dark:text-slate-200">admin@distrifin.com</span>
-                </div>
-                <ChevronRight size={14} className="text-gray-300 group-hover:text-brand-500" />
-              </button>
-              
-              <button 
-                type="button"
-                onClick={() => fillTestAccount('accounts@distrifin.com', 'accounts123')}
-                className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-slate-800/50 hover:bg-brand-50 dark:hover:bg-brand-900/20 text-left transition-colors group"
-              >
-                <div className="flex items-center gap-3">
-                  <Mail size={14} className="text-gray-400" />
-                  <span className="text-xs font-medium text-gray-700 dark:text-slate-200">accounts@distrifin.com</span>
-                </div>
-                <ChevronRight size={14} className="text-gray-300 group-hover:text-brand-500" />
-              </button>
-            </div>
-          </div>
-        )}
         
-        <div className="mt-6 text-center text-[10px] text-gray-300 dark:text-slate-600">
+        <div className="mt-12 text-center text-[10px] text-gray-300 dark:text-slate-600">
           Powered by Firebase Authentication
         </div>
       </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Customer, Route, Collection, CollectionStatus, PaymentType, CustomerStatus, GlobalSettings, User, LedgerEntry, AuditLog, UserRole } from './types';
-import { LayoutDashboard, Users, Calculator, FileText, Menu, Plus, RefreshCw, BarChart3, Settings as SettingsIcon, BookOpen, ShieldAlert, LogOut, UserPlus, Moon, Sun, ExternalLink } from 'lucide-react';
+import { Customer, Route, Collection, CollectionStatus, PaymentType, GlobalSettings, User, LedgerEntry, AuditLog, UserRole } from './types';
+import { LayoutDashboard, Users, Calculator, FileText, Menu, Plus, RefreshCw, BarChart3, Settings as SettingsIcon, BookOpen, ShieldAlert, LogOut, UserPlus, Moon, Sun, Search as SearchIcon, X } from 'lucide-react';
 import { onAuthStateChanged, signOut, sendPasswordResetEmail } from 'firebase/auth';
 import { 
   collection, 
@@ -12,7 +12,8 @@ import {
   deleteDoc,
   query,
   orderBy,
-  writeBatch
+  writeBatch,
+  getDoc
 } from 'firebase/firestore';
 import { auth, db } from './services/firebase';
 
@@ -36,7 +37,9 @@ const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<View>('DASHBOARD');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showCollectionModal, setShowCollectionModal] = useState(false);
+  const [showSearchModal, setShowSearchModal] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Firestore Data State
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -48,19 +51,24 @@ const App: React.FC = () => {
   const [usersList, setUsersList] = useState<User[]>([]);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
-        const email = firebaseUser.email?.toLowerCase() || '';
+        // Fetch user data from Firestore to get the correct role
+        const userDocRef = doc(db, 'users', firebaseUser.uid);
+        const userDoc = await getDoc(userDocRef);
+        
         let role: UserRole = 'COLLECTOR';
-        if (email === 'absiraiva@gmail.com' || email.includes('admin')) {
-          role = 'ADMIN';
-        } else if (email.includes('accounts')) {
-          role = 'ACCOUNTS';
+        let name = firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User';
+
+        if (userDoc.exists()) {
+          const data = userDoc.data();
+          role = (data.role as UserRole) || 'COLLECTOR';
+          name = data.name || name;
         }
 
         setUser({
           uid: firebaseUser.uid,
-          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'User',
+          name: name,
           email: firebaseUser.email || '',
           role: role
         });
@@ -257,6 +265,11 @@ const App: React.FC = () => {
     );
   };
 
+  const searchResults = searchQuery.length > 2 ? {
+    customers: customers.filter(c => c.business_name.toLowerCase().includes(searchQuery.toLowerCase()) || c.customer_name.toLowerCase().includes(searchQuery.toLowerCase())),
+    collections: collections.filter(col => col.cheque_number?.toLowerCase().includes(searchQuery.toLowerCase()) || col.amount.toString().includes(searchQuery))
+  } : { customers: [], collections: [] };
+
   if (isAuthLoading) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-brand-50 dark:bg-slate-950">
@@ -299,7 +312,14 @@ const App: React.FC = () => {
             <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-2 text-gray-600 dark:text-slate-400"><Menu size={24} /></button>
             <h2 className="text-lg font-semibold text-gray-700 dark:text-slate-200 capitalize">{currentView.toLowerCase().replace('_', ' ')}</h2>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => setShowSearchModal(true)} 
+              className="p-2 text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full transition-all"
+              title="Global Search"
+            >
+              <SearchIcon size={20} />
+            </button>
             <button onClick={() => setDarkMode(!darkMode)} className="p-2 text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full transition-all">
               {darkMode ? <Sun size={20} /> : <Moon size={20} />}
             </button>
@@ -348,6 +368,96 @@ const App: React.FC = () => {
           <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 flex items-center justify-center p-4">
             <div className="w-full max-w-2xl">
               <CollectionForm customers={customers} settings={settings} onSave={handleSaveCollection} onCancel={() => setShowCollectionModal(false)} />
+            </div>
+          </div>
+        )}
+
+        {showSearchModal && (
+          <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm flex items-start justify-center p-4 pt-20 overflow-y-auto">
+            <div className="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden border border-brand-100 dark:border-slate-800">
+              <div className="p-4 border-b border-brand-50 dark:border-slate-800 flex items-center gap-3">
+                <SearchIcon className="text-brand-500" />
+                <input 
+                  autoFocus
+                  type="text" 
+                  placeholder="Search business name, cheque number, or amount..." 
+                  className="flex-1 bg-transparent border-none outline-none text-brand-900 dark:text-slate-100 font-medium"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                <button onClick={() => { setShowSearchModal(false); setSearchQuery(''); }} className="p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full transition-colors"><X size={20} /></button>
+              </div>
+              <div className="max-h-[60vh] overflow-y-auto p-4">
+                {searchQuery.length < 3 ? (
+                  <div className="text-center py-10 text-gray-400 text-sm">Type at least 3 characters to search across customers and cheques...</div>
+                ) : (
+                  <div className="space-y-6">
+                    {searchResults.customers.length > 0 && (
+                      <div>
+                        <h4 className="text-xs font-bold text-brand-600 uppercase mb-2 px-1">Matching Customers</h4>
+                        <div className="grid grid-cols-1 gap-2">
+                          {searchResults.customers.map(c => (
+                            <button 
+                              key={c.customer_id} 
+                              onClick={() => { setCurrentView('CUSTOMERS'); setShowSearchModal(false); setSearchQuery(''); }} 
+                              className="w-full p-4 bg-brand-50/50 dark:bg-slate-800 rounded-xl text-left hover:bg-brand-100 dark:hover:bg-slate-700 transition-colors border border-brand-100/50 dark:border-slate-700"
+                            >
+                              <div className="flex justify-between items-start">
+                                <div>
+                                  <p className="font-bold text-brand-900 dark:text-slate-100">{c.business_name}</p>
+                                  <p className="text-xs text-gray-500 mt-0.5">Proprietor: {c.customer_name}</p>
+                                </div>
+                                <span className="text-[10px] font-bold bg-white dark:bg-slate-900 px-2 py-1 rounded text-brand-600 uppercase">Customer</span>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {searchResults.collections.length > 0 && (
+                      <div>
+                        <h4 className="text-xs font-bold text-brand-600 uppercase mb-2 px-1">Matching Collections</h4>
+                        <div className="grid grid-cols-1 gap-2">
+                          {searchResults.collections.map(col => {
+                            const bizName = customers.find(c => c.customer_id === col.customer_id)?.business_name || 'Unknown';
+                            return (
+                              <button 
+                                key={col.collection_id} 
+                                onClick={() => { 
+                                  if (col.payment_type === PaymentType.CHEQUE) {
+                                    setCurrentView('CHEQUES');
+                                  } else {
+                                    setCurrentView('REPORTS');
+                                  }
+                                  setShowSearchModal(false); 
+                                  setSearchQuery(''); 
+                                }} 
+                                className="w-full p-4 bg-brand-50/50 dark:bg-slate-800 rounded-xl text-left hover:bg-brand-100 dark:hover:bg-slate-700 transition-colors border border-brand-100/50 dark:border-slate-700"
+                              >
+                                <div className="flex justify-between items-center">
+                                  <div>
+                                    <p className="font-bold text-brand-900 dark:text-slate-100">${col.amount.toFixed(2)}</p>
+                                    <p className="text-xs text-gray-500 mt-0.5">{bizName} • {col.payment_type} {col.cheque_number ? `(${col.cheque_number})` : ''}</p>
+                                  </div>
+                                  <span className={`text-[10px] font-bold px-2 py-1 rounded shadow-sm ${col.status === 'Realized' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                                    {col.status}
+                                  </span>
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    {searchResults.customers.length === 0 && searchResults.collections.length === 0 && (
+                      <div className="text-center py-10">
+                        <p className="text-gray-400 text-sm">No records found matching "{searchQuery}"</p>
+                        <p className="text-[10px] text-gray-300 mt-1">Try searching by partial name or full cheque number</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}

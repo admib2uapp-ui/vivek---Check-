@@ -43,8 +43,6 @@ const CollectionForm: React.FC<CollectionFormProps> = ({ customers, settings, on
       .sort((a, b) => a.business_name.localeCompare(b.business_name));
   }, [customers, selectedRouteId]);
 
-  const selectedCustomer = customers.find(c => c.customer_id === selectedCustomerId);
-
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -92,18 +90,21 @@ const CollectionForm: React.FC<CollectionFormProps> = ({ customers, settings, on
 
     const isPending = paymentType === PaymentType.CARD || paymentType === PaymentType.CHEQUE;
 
-    onSave({
+    // FIX: Explicitly set every field to either its value or a default (never undefined)
+    const payload: Omit<Collection, 'collection_id'> = {
       customer_id: selectedCustomerId,
       payment_type: paymentType,
       amount: parseFloat(amount),
       status: isPending ? CollectionStatus.PENDING : CollectionStatus.RECEIVED,
       collection_date: new Date().toISOString().split('T')[0],
-      cheque_number: paymentType === PaymentType.CHEQUE ? chequeNumber : undefined,
-      bank: paymentType === PaymentType.CHEQUE ? bank : undefined,
-      branch: paymentType === PaymentType.CHEQUE ? branch : undefined,
-      realize_date: paymentType === PaymentType.CHEQUE ? realizeDate : undefined,
-      cheque_image_base64: chequeImage || undefined
-    });
+      cheque_number: paymentType === PaymentType.CHEQUE ? (chequeNumber || "") : "",
+      bank: paymentType === PaymentType.CHEQUE ? (bank || "") : "",
+      branch: paymentType === PaymentType.CHEQUE ? (branch || "") : "",
+      realize_date: paymentType === PaymentType.CHEQUE ? (realizeDate || "") : "",
+      cheque_image_base64: chequeImage || ""
+    };
+
+    onSave(payload);
   };
 
   return (
@@ -171,6 +172,7 @@ const CollectionForm: React.FC<CollectionFormProps> = ({ customers, settings, on
           <label className="block text-sm font-semibold text-gray-700 dark:text-slate-400 mb-1">Amount</label>
           <input
             type="number"
+            step="0.01"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             className="mt-1 block w-full rounded-xl border-2 border-brand-100 dark:border-slate-800 p-3 bg-brand-50/30 dark:bg-slate-800 text-gray-800 dark:text-slate-200 font-mono text-lg outline-none"
