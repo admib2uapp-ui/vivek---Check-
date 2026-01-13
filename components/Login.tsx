@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User, UserRole } from '../types';
-import { Shield, Mail, Lock, Loader2, ChevronRight, AlertCircle, Info, BookOpen, User as UserIcon, Star } from 'lucide-react';
+import { Shield, Mail, Lock, Loader2, ChevronRight, AlertCircle, Info, Star } from 'lucide-react';
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
 import { auth } from '../services/firebase';
 
@@ -151,10 +151,9 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
           <div className="mt-8 pt-6 border-t border-gray-100 dark:border-slate-800">
             <div className="flex items-center gap-2 mb-4 text-gray-400 dark:text-slate-500">
               <Info size={14} />
-              <span className="text-xs font-bold uppercase tracking-wider">Testing Access</span>
+              <span className="text-xs font-bold uppercase tracking-wider">Registered Testing Accounts</span>
             </div>
             <div className="grid grid-cols-1 gap-2">
-              {/* Primary Admin Button */}
               <button 
                 type="button"
                 onClick={() => fillTestAccount('absiraiva@gmail.com', 'admin123')}
@@ -162,10 +161,7 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
               >
                 <div className="flex items-center gap-3">
                   <Star size={16} className="text-amber-500" />
-                  <div>
-                    <p className="text-xs font-bold text-brand-900 dark:text-brand-200">Personal Admin</p>
-                    <p className="text-[10px] text-brand-500">absiraiva@gmail.com</p>
-                  </div>
+                  <span className="text-xs font-bold text-brand-900 dark:text-brand-200">absiraiva@gmail.com</span>
                 </div>
                 <ChevronRight size={14} className="text-brand-300 group-hover:text-brand-600" />
               </button>
@@ -176,11 +172,8 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-slate-800/50 hover:bg-brand-50 dark:hover:bg-brand-900/20 text-left transition-colors group"
               >
                 <div className="flex items-center gap-3">
-                  <Shield size={16} className="text-purple-500" />
-                  <div>
-                    <p className="text-xs font-bold text-gray-700 dark:text-slate-200">Default Admin</p>
-                    <p className="text-[10px] text-gray-400">admin@distrifin.com</p>
-                  </div>
+                  <Mail size={14} className="text-gray-400" />
+                  <span className="text-xs font-medium text-gray-700 dark:text-slate-200">admin@distrifin.com</span>
                 </div>
                 <ChevronRight size={14} className="text-gray-300 group-hover:text-brand-500" />
               </button>
@@ -191,18 +184,12 @@ const Login: React.FC<LoginProps> = ({ onLogin }) => {
                 className="flex items-center justify-between p-3 rounded-xl bg-gray-50 dark:bg-slate-800/50 hover:bg-brand-50 dark:hover:bg-brand-900/20 text-left transition-colors group"
               >
                 <div className="flex items-center gap-3">
-                  <BookOpen size={16} className="text-green-500" />
-                  <div>
-                    <p className="text-xs font-bold text-gray-700 dark:text-slate-200">Finance Manager</p>
-                    <p className="text-[10px] text-gray-400">accounts@distrifin.com</p>
-                  </div>
+                  <Mail size={14} className="text-gray-400" />
+                  <span className="text-xs font-medium text-gray-700 dark:text-slate-200">accounts@distrifin.com</span>
                 </div>
                 <ChevronRight size={14} className="text-gray-300 group-hover:text-brand-500" />
               </button>
             </div>
-            <p className="mt-4 text-[10px] text-center text-gray-400 dark:text-slate-500 italic">
-              * Ensure these users exist in your Firebase Authentication console.
-            </p>
           </div>
         )}
         
