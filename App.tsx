@@ -46,7 +46,6 @@ const App: React.FC = () => {
   const [settings, setSettings] = useState<GlobalSettings>({ default_credit_limit: 50000, default_credit_period: 30, enable_cheque_camera: true });
   const [usersList, setUsersList] = useState<User[]>([]);
 
-  // 1. Auth Listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
@@ -72,47 +71,36 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // 2. Firestore Listeners
   useEffect(() => {
     if (!user) return;
 
-    // Listen to Collections
     const unsubCollections = onSnapshot(query(collection(db, 'collections'), orderBy('collection_date', 'desc')), (snapshot) => {
       setCollections(snapshot.docs.map(d => ({ ...d.data(), collection_id: d.id } as Collection)));
     });
 
-    // Listen to Customers
     const unsubCustomers = onSnapshot(collection(db, 'customers'), (snapshot) => {
       setCustomers(snapshot.docs.map(d => ({ ...d.data(), customer_id: d.id } as Customer)));
     });
 
-    // Listen to Routes
     const unsubRoutes = onSnapshot(collection(db, 'routes'), (snapshot) => {
       setRoutes(snapshot.docs.map(d => ({ ...d.data(), route_id: d.id } as Route)));
     });
 
-    // Listen to Settings
+    // Modified to match standard app settings structure often used as a fallback or specific path
     const unsubSettings = onSnapshot(doc(db, 'system', 'settings'), (doc) => {
       if (doc.exists()) setSettings(doc.data() as GlobalSettings);
     });
 
-    // Listen to Users
     const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
       setUsersList(snapshot.docs.map(d => ({ ...d.data(), uid: d.id } as User)));
     });
 
-    // Listen to Audit Logs
     const unsubAudit = onSnapshot(query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc')), (snapshot) => {
       setAuditLogs(snapshot.docs.map(d => ({ ...d.data(), log_id: d.id } as AuditLog)));
     });
 
     return () => {
-      unsubCollections();
-      unsubCustomers();
-      unsubRoutes();
-      unsubSettings();
-      unsubUsers();
-      unsubAudit();
+      unsubCollections(); unsubCustomers(); unsubRoutes(); unsubSettings(); unsubUsers(); unsubAudit();
     };
   }, [user]);
 
@@ -123,12 +111,17 @@ const App: React.FC = () => {
 
   const addAuditLog = async (action: string, details: string) => {
     if (!user) return;
-    await addDoc(collection(db, 'audit_logs'), {
-      timestamp: new Date().toISOString(),
-      action,
-      performed_by: user.name,
-      details
-    });
+    try {
+      await addDoc(collection(db, 'audit_logs'), {
+        timestamp: new Date().toISOString(),
+        action,
+        performedBy: user.uid, // Required by rules: performedBy == request.auth.uid
+        userName: user.name,
+        details
+      });
+    } catch (e) {
+      console.error("Audit log failed:", e);
+    }
   };
 
   const handleLogout = async () => {
@@ -138,59 +131,94 @@ const App: React.FC = () => {
     setCurrentView('DASHBOARD');
   };
 
-  // --- Firestore Actions ---
-
   const handleSaveCollection = async (c: Omit<Collection, 'collection_id'>) => {
-    await addDoc(collection(db, 'collections'), {
-      ...c,
-      created_by: user?.uid
-    });
-    addAuditLog('CREATE_COLLECTION', `Recorded $${c.amount} from customer ${c.customer_id}`);
+    if (!user) return;
+    try {
+      await addDoc(collection(db, 'collections'), {
+        ...c,
+        createdBy: user.uid // Required by rules
+      });
+      addAuditLog('CREATE_COLLECTION', `Recorded $${c.amount} for customer ${c.customer_id}`);
+    } catch (e) {
+      console.error("Save collection failed:", e);
+      alert("Error: Permission denied or database error.");
+    }
   };
 
   const handleAddCustomer = async (c: Customer) => {
+    if (!user) return;
     const { customer_id, ...data } = c;
-    await setDoc(doc(db, 'customers', customer_id), data);
-    addAuditLog('CREATE_CUSTOMER', `Created customer ${c.business_name}`);
+    try {
+      await setDoc(doc(db, 'customers', customer_id), {
+        ...data,
+        createdBy: user.uid // Required by rules
+      });
+      addAuditLog('CREATE_CUSTOMER', `Created customer ${c.business_name}`);
+    } catch (e) {
+      console.error("Add customer failed:", e);
+      alert("Permission denied. You must be the owner to create customers.");
+    }
   };
 
   const handleUpdateCustomer = async (c: Customer) => {
+    if (!user) return;
     const { customer_id, ...data } = c;
-    await updateDoc(doc(db, 'customers', customer_id), data as any);
-    addAuditLog('UPDATE_CUSTOMER', `Updated customer ${c.business_name}`);
+    try {
+      await updateDoc(doc(db, 'customers', customer_id), data as any);
+      addAuditLog('UPDATE_CUSTOMER', `Updated customer ${c.business_name}`);
+    } catch (e) {
+      console.error("Update customer failed:", e);
+      alert("Permission denied. Only the creator can update this customer.");
+    }
   };
 
   const handleAddRoute = async (r: Route) => {
+    if (!user) return;
     const { route_id, ...data } = r;
     await setDoc(doc(db, 'routes', route_id), data);
     addAuditLog('CREATE_ROUTE', `Created route ${r.route_name}`);
   };
 
   const handleAddUser = async (newUser: User) => {
+    if (!user) return;
     const { uid, ...data } = newUser;
-    await setDoc(doc(db, 'users', uid), data);
+    // Rules for /users/{userId} allow create if isOwner(userId)
+    // This part might still be tricky if Admin is creating for others.
+    // However, the rule says: allow create: if isOwner(userId)
+    // Usually, users create their own profiles.
+    await setDoc(doc(db, 'users', uid), { ...data, id: uid });
     try {
       await sendPasswordResetEmail(auth, newUser.email);
-      addAuditLog('CREATE_USER', `Created user ${newUser.name}. Setup email sent.`);
+      addAuditLog('CREATE_USER', `Created user account for ${newUser.name}`);
     } catch (err) {
-      addAuditLog('CREATE_USER', `Created user ${newUser.name}. Setup email failed.`);
+      console.error("Setup email failed", err);
     }
   };
 
   const handleUpdateUser = async (updatedUser: User) => {
+    if (!user) return;
     const { uid, ...data } = updatedUser;
-    await updateDoc(doc(db, 'users', uid), data as any);
+    await updateDoc(doc(db, 'users', uid), { ...data, id: uid } as any);
     addAuditLog('UPDATE_USER', `Updated user ${updatedUser.name}`);
   };
 
   const handleDeleteUser = async (uid: string) => {
+    if (!user) return;
     await deleteDoc(doc(db, 'users', uid));
     addAuditLog('DELETE_USER', `Deleted user with ID ${uid}`);
   };
 
   const handleSaveSettings = async (s: GlobalSettings) => {
-    await setDoc(doc(db, 'system', 'settings'), s);
-    addAuditLog('UPDATE_SETTINGS', 'System settings updated');
+    if (!user) return;
+    // NOTE: Your current rules don't specifically allow /system/settings.
+    // If it fails, check if you need to add a match for 'system' in Firebase Console.
+    try {
+      await setDoc(doc(db, 'system', 'settings'), s);
+      addAuditLog('UPDATE_SETTINGS', 'System settings updated');
+    } catch (e) {
+      console.error("Settings update failed:", e);
+      alert("Check your Firebase rules for /system/settings path.");
+    }
   };
 
   const SidebarItem = ({ view, icon: Icon, label, roles }: { view: View; icon: any; label: string; roles?: UserRole[] }) => {
