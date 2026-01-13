@@ -13,7 +13,7 @@ import {
   query,
   orderBy 
 } from 'firebase/firestore';
-import { auth, db, provisionAuthUserAndSendPasswordSetupEmail } from './services/firebase';
+import { auth, db } from './services/firebase';
 
 import Dashboard from './components/Dashboard';
 import CollectionForm from './components/CollectionForm';
@@ -28,35 +28,6 @@ import AuditLogs from './components/AuditLogs';
 import UserManager from './components/UserManager';
 
 type View = 'DASHBOARD' | 'COLLECTIONS' | 'CUSTOMERS' | 'CHEQUES' | 'RECONCILIATION' | 'REPORTS' | 'SETTINGS' | 'LEDGER' | 'AUDIT' | 'USERS';
-
-const normalizeCollection = (data: any, id: string): Collection => {
-  const createdBy = data?.createdBy ?? data?.created_by;
-  return {
-    ...(data || {}),
-    ...(createdBy ? { createdBy } : {}),
-    collection_id: id
-  } as Collection;
-};
-
-const normalizeCustomer = (data: any, id: string): Customer => {
-  const createdBy = data?.createdBy ?? data?.created_by;
-  return {
-    ...(data || {}),
-    ...(createdBy ? { createdBy } : {}),
-    customer_id: id
-  } as Customer;
-};
-
-const normalizeAuditLog = (data: any, id: string): AuditLog => {
-  const performedBy = data?.performedBy ?? data?.performed_by;
-  const userName = data?.userName ?? data?.user_name;
-  return {
-    ...(data || {}),
-    ...(performedBy ? { performedBy } : {}),
-    ...(userName ? { userName } : {}),
-    log_id: id
-  } as AuditLog;
-};
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -100,29 +71,15 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // Ensure role reflects Firestore `/users/{uid}` document if present
-  useEffect(() => {
-    if (!user?.uid) return;
-    const unsub = onSnapshot(doc(db, 'users', user.uid), (d) => {
-      if (d.exists()) {
-        const data = d.data() as Partial<User>;
-        if (data.role && data.role !== user.role) {
-          setUser((prev) => prev ? { ...prev, role: data.role as UserRole, name: data.name || prev.name, email: data.email || prev.email } : prev);
-        }
-      }
-    });
-    return () => unsub();
-  }, [user?.uid]);
-
   useEffect(() => {
     if (!user) return;
 
     const unsubCollections = onSnapshot(query(collection(db, 'collections'), orderBy('collection_date', 'desc')), (snapshot) => {
-      setCollections(snapshot.docs.map(d => normalizeCollection(d.data(), d.id)));
+      setCollections(snapshot.docs.map(d => ({ ...d.data(), collection_id: d.id } as Collection)));
     });
 
     const unsubCustomers = onSnapshot(collection(db, 'customers'), (snapshot) => {
-      setCustomers(snapshot.docs.map(d => normalizeCustomer(d.data(), d.id)));
+      setCustomers(snapshot.docs.map(d => ({ ...d.data(), customer_id: d.id } as Customer)));
     });
 
     const unsubRoutes = onSnapshot(collection(db, 'routes'), (snapshot) => {
@@ -138,7 +95,7 @@ const App: React.FC = () => {
     });
 
     const unsubAudit = onSnapshot(query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc')), (snapshot) => {
-      setAuditLogs(snapshot.docs.map(d => normalizeAuditLog(d.data(), d.id)));
+      setAuditLogs(snapshot.docs.map(d => ({ ...d.data(), log_id: d.id } as AuditLog)));
     });
 
     return () => {
@@ -178,13 +135,13 @@ const App: React.FC = () => {
     try {
       await addDoc(collection(db, 'collections'), {
         ...c,
-        createdBy: user.uid // Match rule: request.resource.data.createdBy == request.auth.uid
+        createdBy: user.uid // Required by rules: createdBy == request.auth.uid
       });
-      addAuditLog('CREATE_COLLECTION', `Recorded $${c.amount} for customer ${c.customer_id}`);
+      await addAuditLog('CREATE_COLLECTION', `Recorded payment from customer ${c.customer_id}`);
       setShowCollectionModal(false);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Save collection failed:", e);
-      alert("Permission Denied: Ensure you are logged in and rules allow writing to /collections.");
+      alert(`Permission Denied: ${e.message}. Ensure 'createdBy' field is included as per rules.`);
     }
   };
 
@@ -194,12 +151,12 @@ const App: React.FC = () => {
     try {
       await setDoc(doc(db, 'customers', customer_id), {
         ...data,
-        createdBy: user.uid // Match rule: request.resource.data.createdBy == request.auth.uid
+        createdBy: user.uid // Required by rules: createdBy == request.auth.uid
       });
-      addAuditLog('CREATE_CUSTOMER', `Created customer ${c.business_name}`);
-    } catch (e) {
+      await addAuditLog('CREATE_CUSTOMER', `Created customer ${c.business_name}`);
+    } catch (e: any) {
       console.error("Add customer failed:", e);
-      alert("Permission Denied: Check /customers security rules for createdBy requirements.");
+      alert(`Save failed: ${e.message}. Check if 'createdBy' matches your login.`);
     }
   };
 
@@ -208,10 +165,10 @@ const App: React.FC = () => {
     const { customer_id, ...data } = c;
     try {
       await updateDoc(doc(db, 'customers', customer_id), data as any);
-      addAuditLog('UPDATE_CUSTOMER', `Updated customer ${c.business_name}`);
+      await addAuditLog('UPDATE_CUSTOMER', `Updated customer ${c.business_name}`);
     } catch (e) {
       console.error("Update customer failed:", e);
-      alert("Permission Denied: Only the creator of this customer record can update it.");
+      alert("Permission Denied: Only the owner who created this customer can update it.");
     }
   };
 
@@ -220,24 +177,21 @@ const App: React.FC = () => {
     const { route_id, ...data } = r;
     try {
       await setDoc(doc(db, 'routes', route_id), data);
-      addAuditLog('CREATE_ROUTE', `Created route ${r.route_name}`);
+      await addAuditLog('CREATE_ROUTE', `Created route ${r.route_name}`);
     } catch (e) {
       console.error("Route add failed:", e);
-      alert("Permission Denied for /routes.");
     }
   };
 
-  const handleAddUser = async (newUser: Omit<User, 'uid'>) => {
+  const handleAddUser = async (newUser: User) => {
     if (!user) return;
+    const { uid, ...data } = newUser;
     try {
-      const createdAuthUser = await provisionAuthUserAndSendPasswordSetupEmail(newUser.email);
-      const uid = createdAuthUser.uid;
-
-      await setDoc(doc(db, 'users', uid), { ...newUser, id: uid });
-      addAuditLog('CREATE_USER', `Created user account for ${newUser.name}`);
+      await setDoc(doc(db, 'users', uid), { ...data, id: uid });
+      await sendPasswordResetEmail(auth, newUser.email);
+      await addAuditLog('CREATE_USER', `Created user account for ${newUser.name}`);
     } catch (err) {
-      console.error("User creation/email failed", err);
-      alert("User creation failed. If the email already exists in Firebase Auth, use the reset button instead.");
+      console.error("User creation failed", err);
     }
   };
 
@@ -246,7 +200,7 @@ const App: React.FC = () => {
     const { uid, ...data } = updatedUser;
     try {
       await updateDoc(doc(db, 'users', uid), { ...data, id: uid } as any);
-      addAuditLog('UPDATE_USER', `Updated user ${updatedUser.name}`);
+      await addAuditLog('UPDATE_USER', `Updated user ${updatedUser.name}`);
     } catch (e) {
        console.error("User update failed", e);
     }
@@ -256,7 +210,7 @@ const App: React.FC = () => {
     if (!user) return;
     try {
       await deleteDoc(doc(db, 'users', uid));
-      addAuditLog('DELETE_USER', `Deleted user with ID ${uid}`);
+      await addAuditLog('DELETE_USER', `Deleted user with ID ${uid}`);
     } catch (e) {
        console.error("User deletion failed", e);
     }
@@ -265,13 +219,12 @@ const App: React.FC = () => {
   const handleSaveSettings = async (s: GlobalSettings) => {
     if (!user) return;
     try {
-      // Note: Settings path /system/settings might need a specific rule if not covered by a general match
       await setDoc(doc(db, 'system', 'settings'), s);
-      addAuditLog('UPDATE_SETTINGS', 'System settings updated');
+      await addAuditLog('UPDATE_SETTINGS', 'System settings updated');
       alert("Settings saved successfully.");
     } catch (e) {
       console.error("Settings update failed:", e);
-      alert("Update failed. You may need to add a security rule for /system/settings.");
+      alert("Failed to save settings. You might need to add a security rule for /system/settings.");
     }
   };
 
@@ -379,10 +332,10 @@ const App: React.FC = () => {
                    <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 rounded-2xl p-6">
                       <div className="flex items-center gap-3 mb-4">
                         <ShieldAlert className="text-amber-600" size={24} />
-                        <h3 className="text-lg font-bold text-amber-800 dark:text-amber-200">Database Permissions</h3>
+                        <h3 className="text-lg font-bold text-amber-800 dark:text-amber-200">Firebase Security Rules</h3>
                       </div>
                       <p className="text-sm text-amber-700 dark:text-amber-400 mb-6">
-                        If data is not saving, you may need to update your Firestore security rules to allow writes to specific collections or documents.
+                        Your rules enforce 'createdBy' and 'performedBy' fields. If you experience save issues, click below to verify your logic in the console.
                       </p>
                       <a 
                         href="https://console.firebase.google.com/u/2/project/studio-3790385784-4778c/firestore/databases/-default-/security/rules" 
@@ -390,7 +343,7 @@ const App: React.FC = () => {
                         rel="noopener noreferrer"
                         className="inline-flex items-center px-6 py-3 bg-amber-600 text-white rounded-xl font-bold shadow-lg hover:bg-amber-700 transition-all gap-2"
                       >
-                        <ExternalLink size={18} /> Configure Firebase Rules
+                        <ExternalLink size={18} /> Configure Security Rules
                       </a>
                    </div>
                 </div>

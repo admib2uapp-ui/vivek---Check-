@@ -49,8 +49,7 @@ export interface Customer {
   credit_period_days: number;
   route_id: string;
   status: CustomerStatus;
-  // Firestore field name used by this app: createdBy
-  createdBy?: string; // User UID
+  createdBy?: string;
 }
 
 export interface Collection {
@@ -65,8 +64,7 @@ export interface Collection {
   realize_date?: string; // YYYY-MM-DD
   collection_date: string; // YYYY-MM-DD
   cheque_image_base64?: string;
-  // Firestore field name used by this app: createdBy
-  createdBy?: string; // User UID
+  createdBy?: string; // User UID - camelCase to match rules
 }
 
 export interface LedgerEntry {
@@ -83,9 +81,8 @@ export interface AuditLog {
   log_id: string;
   timestamp: string;
   action: string; // 'CREATE_COLLECTION', 'RECONCILE', etc.
-  // Firestore field names used by this app: performedBy + userName
-  performedBy?: string; // User UID
-  userName?: string; // Display name
+  performedBy: string; // User UID - camelCase to match rules
+  userName?: string;
   details: string;
 }
 

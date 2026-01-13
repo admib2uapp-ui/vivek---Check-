@@ -5,7 +5,7 @@ import { resetUserPassword } from '../services/firebase';
 
 interface UserManagerProps {
   users: User[];
-  onAddUser: (user: Omit<User, 'uid'>) => void;
+  onAddUser: (user: User) => void;
   onUpdateUser: (user: User) => void;
   onDeleteUser: (uid: string) => void;
 }
@@ -40,6 +40,7 @@ const UserManager: React.FC<UserManagerProps> = ({ users, onAddUser, onUpdateUse
       });
     } else {
       onAddUser({
+        uid: `U-${Date.now()}`,
         name: formData.name,
         email: formData.email,
         role: formData.role
