@@ -1,8 +1,19 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Customer, Route, Collection, CollectionStatus, PaymentType, CustomerStatus, GlobalSettings, User, LedgerEntry, AuditLog, UserRole } from './types';
-import { LayoutDashboard, Users, Calculator, FileText, Menu, Plus, RefreshCw, BarChart3, Settings as SettingsIcon, Bell, BookOpen, ShieldAlert, LogOut, UserPlus, Moon, Sun } from 'lucide-react';
+import { LayoutDashboard, Users, Calculator, FileText, Menu, Plus, RefreshCw, BarChart3, Settings as SettingsIcon, BookOpen, ShieldAlert, LogOut, UserPlus, Moon, Sun } from 'lucide-react';
 import { onAuthStateChanged, signOut, sendPasswordResetEmail } from 'firebase/auth';
-import { auth } from './services/firebase';
+import { 
+  collection, 
+  onSnapshot, 
+  addDoc, 
+  updateDoc, 
+  doc, 
+  setDoc, 
+  deleteDoc,
+  query,
+  orderBy 
+} from 'firebase/firestore';
+import { auth, db } from './services/firebase';
 
 import Dashboard from './components/Dashboard';
 import CollectionForm from './components/CollectionForm';
@@ -16,30 +27,6 @@ import Ledger from './components/Ledger';
 import AuditLogs from './components/AuditLogs';
 import UserManager from './components/UserManager';
 
-const INITIAL_CUSTOMERS: Customer[] = [
-  {
-    customer_id: 'C001',
-    customer_name: 'John Doe',
-    business_name: 'City Grocers',
-    address: '123 Main St',
-    whatsapp_number: '+1234567890',
-    phone_number: '0771234567',
-    location: '6.9271, 79.8612',
-    credit_limit: 50000,
-    credit_period_days: 30,
-    route_id: 'R01',
-    status: CustomerStatus.ACTIVE
-  }
-];
-
-const INITIAL_ROUTES: Route[] = [
-  { route_id: 'R01', route_name: 'Colombo Central', status: 'Active' }
-];
-
-const INITIAL_USERS: User[] = [
-  { uid: 'U-001', name: 'System Admin', email: 'admin@distrifin.com', role: 'ADMIN' }
-];
-
 type View = 'DASHBOARD' | 'COLLECTIONS' | 'CUSTOMERS' | 'CHEQUES' | 'RECONCILIATION' | 'REPORTS' | 'SETTINGS' | 'LEDGER' | 'AUDIT' | 'USERS';
 
 const App: React.FC = () => {
@@ -50,26 +37,22 @@ const App: React.FC = () => {
   const [showCollectionModal, setShowCollectionModal] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
 
-  const [customers, setCustomers] = useState<Customer[]>(INITIAL_CUSTOMERS);
-  const [routes, setRoutes] = useState<Route[]>(INITIAL_ROUTES);
+  // Firestore Data State
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [routes, setRoutes] = useState<Route[]>([]);
   const [collections, setCollections] = useState<Collection[]>([]);
   const [ledger, setLedger] = useState<LedgerEntry[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [settings, setSettings] = useState<GlobalSettings>({ default_credit_limit: 50000, default_credit_period: 30, enable_cheque_camera: true });
-  const [usersList, setUsersList] = useState<User[]>(INITIAL_USERS);
+  const [usersList, setUsersList] = useState<User[]>([]);
 
+  // 1. Auth Listener
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
         const email = firebaseUser.email?.toLowerCase() || '';
-        
-        // Map roles based on email
         let role: UserRole = 'COLLECTOR';
-        
-        // Explicit admin access for you
-        if (email === 'absiraiva@gmail.com') {
-          role = 'ADMIN';
-        } else if (email.includes('admin')) {
+        if (email === 'absiraiva@gmail.com' || email.includes('admin')) {
           role = 'ADMIN';
         } else if (email.includes('accounts')) {
           role = 'ACCOUNTS';
@@ -86,66 +69,128 @@ const App: React.FC = () => {
       }
       setIsAuthLoading(false);
     });
-
     return () => unsubscribe();
   }, []);
 
+  // 2. Firestore Listeners
   useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    if (!user) return;
+
+    // Listen to Collections
+    const unsubCollections = onSnapshot(query(collection(db, 'collections'), orderBy('collection_date', 'desc')), (snapshot) => {
+      setCollections(snapshot.docs.map(d => ({ ...d.data(), collection_id: d.id } as Collection)));
+    });
+
+    // Listen to Customers
+    const unsubCustomers = onSnapshot(collection(db, 'customers'), (snapshot) => {
+      setCustomers(snapshot.docs.map(d => ({ ...d.data(), customer_id: d.id } as Customer)));
+    });
+
+    // Listen to Routes
+    const unsubRoutes = onSnapshot(collection(db, 'routes'), (snapshot) => {
+      setRoutes(snapshot.docs.map(d => ({ ...d.data(), route_id: d.id } as Route)));
+    });
+
+    // Listen to Settings
+    const unsubSettings = onSnapshot(doc(db, 'system', 'settings'), (doc) => {
+      if (doc.exists()) setSettings(doc.data() as GlobalSettings);
+    });
+
+    // Listen to Users
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+      setUsersList(snapshot.docs.map(d => ({ ...d.data(), uid: d.id } as User)));
+    });
+
+    // Listen to Audit Logs
+    const unsubAudit = onSnapshot(query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc')), (snapshot) => {
+      setAuditLogs(snapshot.docs.map(d => ({ ...d.data(), log_id: d.id } as AuditLog)));
+    });
+
+    return () => {
+      unsubCollections();
+      unsubCustomers();
+      unsubRoutes();
+      unsubSettings();
+      unsubUsers();
+      unsubAudit();
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (darkMode) document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
   }, [darkMode]);
 
-  const addAuditLog = (action: string, details: string) => {
+  const addAuditLog = async (action: string, details: string) => {
     if (!user) return;
-    setAuditLogs(prev => [{
-      log_id: `LOG-${Date.now()}`,
+    await addDoc(collection(db, 'audit_logs'), {
       timestamp: new Date().toISOString(),
       action,
       performed_by: user.name,
       details
-    }, ...prev]);
-  };
-
-  const handleLogin = (u: User) => {
-    setUser(u);
-    addAuditLog('LOGIN', 'User logged into the system');
+    });
   };
 
   const handleLogout = async () => {
-    addAuditLog('LOGOUT', 'User logged out');
+    await addAuditLog('LOGOUT', 'User logged out');
     await signOut(auth);
     setUser(null);
     setCurrentView('DASHBOARD');
   };
 
+  // --- Firestore Actions ---
+
+  const handleSaveCollection = async (c: Omit<Collection, 'collection_id'>) => {
+    await addDoc(collection(db, 'collections'), {
+      ...c,
+      created_by: user?.uid
+    });
+    addAuditLog('CREATE_COLLECTION', `Recorded $${c.amount} from customer ${c.customer_id}`);
+  };
+
+  const handleAddCustomer = async (c: Customer) => {
+    const { customer_id, ...data } = c;
+    await setDoc(doc(db, 'customers', customer_id), data);
+    addAuditLog('CREATE_CUSTOMER', `Created customer ${c.business_name}`);
+  };
+
+  const handleUpdateCustomer = async (c: Customer) => {
+    const { customer_id, ...data } = c;
+    await updateDoc(doc(db, 'customers', customer_id), data as any);
+    addAuditLog('UPDATE_CUSTOMER', `Updated customer ${c.business_name}`);
+  };
+
+  const handleAddRoute = async (r: Route) => {
+    const { route_id, ...data } = r;
+    await setDoc(doc(db, 'routes', route_id), data);
+    addAuditLog('CREATE_ROUTE', `Created route ${r.route_name}`);
+  };
+
   const handleAddUser = async (newUser: User) => {
-    setUsersList([...usersList, newUser]);
+    const { uid, ...data } = newUser;
+    await setDoc(doc(db, 'users', uid), data);
     try {
       await sendPasswordResetEmail(auth, newUser.email);
-      addAuditLog('CREATE_USER', `Created user ${newUser.name}. Setup email sent to ${newUser.email}`);
+      addAuditLog('CREATE_USER', `Created user ${newUser.name}. Setup email sent.`);
     } catch (err) {
-      console.error("Failed to send setup email", err);
       addAuditLog('CREATE_USER', `Created user ${newUser.name}. Setup email failed.`);
     }
   };
 
-  const handleUpdateUser = (updatedUser: User) => {
-    setUsersList(usersList.map(u => u.uid === updatedUser.uid ? updatedUser : u));
+  const handleUpdateUser = async (updatedUser: User) => {
+    const { uid, ...data } = updatedUser;
+    await updateDoc(doc(db, 'users', uid), data as any);
     addAuditLog('UPDATE_USER', `Updated user ${updatedUser.name}`);
   };
 
-  const handleDeleteUser = (uid: string) => {
-    const userToDelete = usersList.find(u => u.uid === uid);
-    setUsersList(usersList.filter(u => u.uid !== uid));
-    if (userToDelete) addAuditLog('DELETE_USER', `Deleted user ${userToDelete.name}`);
+  const handleDeleteUser = async (uid: string) => {
+    await deleteDoc(doc(db, 'users', uid));
+    addAuditLog('DELETE_USER', `Deleted user with ID ${uid}`);
   };
 
-  const handleImportCustomers = (newCustomers: Customer[]) => {
-    setCustomers(prev => [...prev, ...newCustomers]);
-    addAuditLog('IMPORT_CUSTOMERS', `Imported ${newCustomers.length} customers into the system`);
+  const handleSaveSettings = async (s: GlobalSettings) => {
+    await setDoc(doc(db, 'system', 'settings'), s);
+    addAuditLog('UPDATE_SETTINGS', 'System settings updated');
   };
 
   const SidebarItem = ({ view, icon: Icon, label, roles }: { view: View; icon: any; label: string; roles?: UserRole[] }) => {
@@ -171,7 +216,7 @@ const App: React.FC = () => {
     );
   }
 
-  if (!user) return <Login onLogin={handleLogin} />;
+  if (!user) return <Login onLogin={(u) => setUser(u)} />;
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-slate-950 transition-colors">
@@ -205,18 +250,12 @@ const App: React.FC = () => {
             <button onClick={() => setIsSidebarOpen(true)} className="md:hidden p-2 text-gray-600 dark:text-slate-400"><Menu size={24} /></button>
             <h2 className="text-lg font-semibold text-gray-700 dark:text-slate-200 capitalize">{currentView.toLowerCase().replace('_', ' ')}</h2>
           </div>
-          
           <div className="flex items-center gap-4">
-            <button 
-              onClick={() => setDarkMode(!darkMode)} 
-              className="p-2 text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full transition-all"
-              title="Toggle Theme"
-            >
+            <button onClick={() => setDarkMode(!darkMode)} className="p-2 text-gray-500 dark:text-slate-400 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full transition-all">
               {darkMode ? <Sun size={20} /> : <Moon size={20} />}
             </button>
-
             {currentView === 'COLLECTIONS' && ['ADMIN', 'COLLECTOR'].includes(user.role) && (
-              <button onClick={() => setShowCollectionModal(true)} className="flex items-center px-4 py-2 bg-brand-600 text-white rounded-md hover:bg-brand-700 shadow-sm font-bold">
+              <button onClick={() => setShowCollectionModal(true)} className="flex items-center px-4 py-2 bg-brand-600 text-white rounded-md hover:bg-brand-700 shadow-sm font-bold transition-all active:scale-95">
                 <Plus size={18} className="mr-2" /> New Collection
               </button>
             )}
@@ -239,10 +278,10 @@ const App: React.FC = () => {
             <CustomerManager 
               customers={customers} 
               routes={routes} 
-              onAddCustomer={(c) => setCustomers([...customers, c])} 
-              onEditCustomer={(c) => setCustomers(customers.map(cu => cu.customer_id === c.customer_id ? c : cu))} 
-              onAddRoute={(r) => setRoutes([...routes, r])} 
-              onImport={handleImportCustomers} 
+              onAddCustomer={handleAddCustomer} 
+              onEditCustomer={handleUpdateCustomer} 
+              onAddRoute={handleAddRoute} 
+              onImport={(list) => list.forEach(handleAddCustomer)} 
             />
           )}
           {currentView === 'USERS' && <UserManager users={usersList} onAddUser={handleAddUser} onUpdateUser={handleUpdateUser} onDeleteUser={handleDeleteUser} />}
@@ -250,13 +289,13 @@ const App: React.FC = () => {
           {currentView === 'REPORTS' && <Reports collections={collections} customers={customers} routes={routes} />}
           {currentView === 'AUDIT' && <AuditLogs logs={auditLogs} />}
           {currentView === 'LEDGER' && <Ledger entries={ledger} />}
-          {currentView === 'SETTINGS' && <Settings settings={settings} onSave={setSettings} />}
+          {currentView === 'SETTINGS' && <Settings settings={settings} onSave={handleSaveSettings} />}
         </div>
 
         {showCollectionModal && (
           <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 flex items-center justify-center p-4">
             <div className="w-full max-w-2xl">
-              <CollectionForm customers={customers} settings={settings} onSave={(c) => { setCollections([...collections, { ...c, collection_id: `CL${Date.now()}` }]); setShowCollectionModal(false); }} onCancel={() => setShowCollectionModal(false)} />
+              <CollectionForm customers={customers} settings={settings} onSave={handleSaveCollection} onCancel={() => setShowCollectionModal(false)} />
             </div>
           </div>
         )}
