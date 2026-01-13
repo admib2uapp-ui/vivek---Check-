@@ -40,13 +40,14 @@ export interface Customer {
   whatsapp_number: string;
   phone_number: string;
   business_name: string;
+  business_address?: string;
+  br_number?: string;
+  nic?: string;
+  date_of_birth?: string;
   location: string; // GPS string
   credit_limit: number;
   credit_period_days: number;
   route_id: string;
-  br_number?: string;
-  date_of_birth?: string;
-  nic?: string;
   status: CustomerStatus;
 }
 
