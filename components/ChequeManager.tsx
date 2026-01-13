@@ -1,44 +1,65 @@
 import React, { useState } from 'react';
 import { Collection, CollectionStatus, PaymentType } from '../types';
-import { Calendar, CheckCircle, ArrowUpDown, Landmark } from 'lucide-react';
+import { Calendar, ArrowUpDown, Landmark, ChevronUp, ChevronDown } from 'lucide-react';
 
 interface ChequeManagerProps {
   collections: Collection[];
 }
 
+type SortKey = 'status' | 'cheque_number' | 'bank' | 'realize_date' | 'amount';
+
 const ChequeManager: React.FC<ChequeManagerProps> = ({ collections }) => {
   const [filter, setFilter] = useState<'ALL' | 'DEPOSIT_READY'>('ALL');
-  const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('ASC');
+  const [sortKey, setSortKey] = useState<SortKey>('realize_date');
+  const [sortOrder, setSortOrder] = useState<'ASC' | 'DESC'>('DESC');
 
-  // Filter only cheques
   let cheques = collections.filter(c => c.payment_type === PaymentType.CHEQUE);
 
-  // Apply Deposit Ready Filter (Pending & Nearest date logic simplified to pending for demo)
   if (filter === 'DEPOSIT_READY') {
     cheques = cheques.filter(c => c.status === CollectionStatus.PENDING);
   }
 
-  // Sort
   cheques.sort((a, b) => {
-    const dateA = new Date(a.realize_date || '').getTime();
-    const dateB = new Date(b.realize_date || '').getTime();
-    return sortOrder === 'ASC' ? dateA - dateB : dateB - dateA;
+    let valA: any = a[sortKey as keyof Collection];
+    let valB: any = b[sortKey as keyof Collection];
+
+    // Special handling for nested or derived values
+    if (sortKey === 'bank') valA = a.bank || '';
+    if (sortKey === 'bank') valB = b.bank || '';
+
+    if (valA < valB) return sortOrder === 'ASC' ? -1 : 1;
+    if (valA > valB) return sortOrder === 'ASC' ? 1 : -1;
+    return 0;
   });
+
+  const toggleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortOrder(prev => prev === 'ASC' ? 'DESC' : 'ASC');
+    } else {
+      setSortKey(key);
+      setSortOrder('ASC');
+    }
+  };
+
+  const SortIcon = ({ col }: { col: SortKey }) => {
+    if (sortKey !== col) return <ArrowUpDown size={12} className="ml-1 opacity-40" />;
+    return sortOrder === 'ASC' ? <ChevronUp size={12} className="ml-1 text-brand-600" /> : <ChevronDown size={12} className="ml-1 text-brand-600" />;
+  };
 
   return (
     <div className="p-4 space-y-6 overflow-y-auto h-full pb-20">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h1 className="text-2xl font-bold text-gray-800">Cheque Management</h1>
-        <div className="flex space-x-2">
+        <h1 className="text-2xl font-bold text-brand-800">Cheque Management</h1>
+        <div className="flex p-1 bg-brand-100 rounded-xl space-x-1">
            <button
             onClick={() => setFilter('ALL')}
-            className={`px-3 py-1.5 text-sm rounded-md ${filter === 'ALL' ? 'bg-gray-800 text-white' : 'bg-white border text-gray-700'}`}
+            className={`px-4 py-2 text-sm font-bold rounded-lg transition-all ${filter === 'ALL' ? 'bg-brand-500 text-white shadow-sm' : 'text-brand-700 hover:bg-brand-200'}`}
           >
             All Cheques
           </button>
           <button
             onClick={() => setFilter('DEPOSIT_READY')}
-            className={`px-3 py-1.5 text-sm rounded-md flex items-center ${filter === 'DEPOSIT_READY' ? 'bg-brand-600 text-white' : 'bg-white border text-gray-700'}`}
+            className={`px-4 py-2 text-sm font-bold rounded-lg transition-all flex items-center ${filter === 'DEPOSIT_READY' ? 'bg-brand-500 text-white shadow-sm' : 'text-brand-700 hover:bg-brand-200'}`}
           >
             <Landmark size={14} className="mr-1" />
             Bank Deposit
@@ -46,52 +67,52 @@ const ChequeManager: React.FC<ChequeManagerProps> = ({ collections }) => {
         </div>
       </div>
 
-      <div className="flex justify-end">
-        <button 
-          onClick={() => setSortOrder(prev => prev === 'ASC' ? 'DESC' : 'ASC')}
-          className="flex items-center text-sm text-gray-600 hover:text-gray-900"
-        >
-          <ArrowUpDown size={14} className="mr-1" />
-          Sort by Date ({sortOrder})
-        </button>
-      </div>
-
-      <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-sm border border-brand-100 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <table className="min-w-full divide-y divide-brand-50">
+            <thead className="bg-brand-50/50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cheque No</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bank/Branch</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Realize Date</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                <th onClick={() => toggleSort('status')} className="px-6 py-4 text-left text-xs font-bold text-brand-700 uppercase tracking-wider cursor-pointer hover:bg-brand-100 transition-colors">
+                  <div className="flex items-center">Status <SortIcon col="status" /></div>
+                </th>
+                <th onClick={() => toggleSort('cheque_number')} className="px-6 py-4 text-left text-xs font-bold text-brand-700 uppercase tracking-wider cursor-pointer hover:bg-brand-100 transition-colors">
+                  <div className="flex items-center">Cheque No <SortIcon col="cheque_number" /></div>
+                </th>
+                <th onClick={() => toggleSort('bank')} className="px-6 py-4 text-left text-xs font-bold text-brand-700 uppercase tracking-wider cursor-pointer hover:bg-brand-100 transition-colors">
+                  <div className="flex items-center">Bank/Branch <SortIcon col="bank" /></div>
+                </th>
+                <th onClick={() => toggleSort('realize_date')} className="px-6 py-4 text-left text-xs font-bold text-brand-700 uppercase tracking-wider cursor-pointer hover:bg-brand-100 transition-colors">
+                  <div className="flex items-center">Realize Date <SortIcon col="realize_date" /></div>
+                </th>
+                <th onClick={() => toggleSort('amount')} className="px-6 py-4 text-right text-xs font-bold text-brand-700 uppercase tracking-wider cursor-pointer hover:bg-brand-100 transition-colors">
+                  <div className="flex items-center justify-end">Amount <SortIcon col="amount" /></div>
+                </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-white divide-y divide-brand-50">
               {cheques.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-10 text-center text-gray-500">No cheques found.</td>
+                  <td colSpan={5} className="px-6 py-16 text-center text-brand-400 font-medium italic">No cheques matching the criteria.</td>
                 </tr>
               ) : (
                 cheques.map((c) => (
-                  <tr key={c.collection_id} className="hover:bg-gray-50">
+                  <tr key={c.collection_id} className="hover:bg-brand-50/30 transition-colors">
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full 
-                        ${c.status === CollectionStatus.RECEIVED || c.status === CollectionStatus.REALIZED ? 'bg-green-100 text-green-800' : 
-                          c.status === CollectionStatus.PENDING ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>
+                      <span className={`px-3 py-1 inline-flex text-xs leading-5 font-bold rounded-full shadow-sm
+                        ${c.status === CollectionStatus.RECEIVED || c.status === CollectionStatus.REALIZED ? 'bg-green-100 text-green-700' : 
+                          c.status === CollectionStatus.PENDING ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
                         {c.status}
                       </span>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{c.cheque_number}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{c.bank} - {c.branch}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-gray-700">{c.cheque_number}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{c.bank} <span className="text-gray-300 mx-1">|</span> {c.branch}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
-                        <div className="flex items-center">
-                            <Calendar size={14} className="mr-2 text-gray-400" />
+                        <div className="flex items-center text-brand-600">
+                            <Calendar size={14} className="mr-2 opacity-60" />
                             {c.realize_date}
                         </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-bold">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-brand-700 text-right font-bold">
                       ${c.amount.toFixed(2)}
                     </td>
                   </tr>

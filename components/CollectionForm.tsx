@@ -15,7 +15,6 @@ const CollectionForm: React.FC<CollectionFormProps> = ({ customers, settings, on
   const [paymentType, setPaymentType] = useState<PaymentType>(PaymentType.CASH);
   const [amount, setAmount] = useState('');
   
-  // Cheque specific state
   const [chequeNumber, setChequeNumber] = useState('');
   const [bank, setBank] = useState('');
   const [branch, setBranch] = useState('');
@@ -26,7 +25,6 @@ const CollectionForm: React.FC<CollectionFormProps> = ({ customers, settings, on
   const [error, setError] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-
   const selectedCustomer = customers.find(c => c.customer_id === selectedCustomerId);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -37,8 +35,6 @@ const CollectionForm: React.FC<CollectionFormProps> = ({ customers, settings, on
     reader.onloadend = async () => {
       const base64 = reader.result as string;
       setChequeImage(base64);
-      
-      // Auto-analyze with Gemini
       setIsAnalyzing(true);
       setError(null);
       const data = await analyzeChequeImage(base64);
@@ -70,7 +66,6 @@ const CollectionForm: React.FC<CollectionFormProps> = ({ customers, settings, on
       }
       
       if (selectedCustomer) {
-         // Credit Period Validation
          const today = new Date();
          const rDate = new Date(realizeDate);
          const diffTime = Math.abs(rDate.getTime() - today.getTime());
@@ -106,27 +101,26 @@ const CollectionForm: React.FC<CollectionFormProps> = ({ customers, settings, on
     });
   };
 
-  // Check if camera is enabled in settings (default true if settings not provided)
   const cameraEnabled = settings ? settings.enable_cheque_camera : true;
 
   return (
-    <div className="bg-white p-6 rounded-lg shadow-lg max-w-2xl mx-auto my-4">
-      <h2 className="text-xl font-bold mb-6 text-gray-800">New Collection</h2>
+    <div className="bg-white p-6 rounded-2xl shadow-xl max-w-2xl mx-auto my-4 border border-brand-100">
+      <h2 className="text-2xl font-bold mb-6 text-brand-700">New Collection</h2>
       
       {error && (
-        <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-md flex items-center">
-          <AlertCircle size={18} className="mr-2" />
+        <div className="mb-4 p-4 bg-red-50 text-red-700 rounded-xl flex items-center border border-red-100">
+          <AlertCircle size={20} className="mr-2" />
           {error}
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-5">
         <div>
-          <label className="block text-sm font-medium text-gray-700">Customer</label>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">Customer</label>
           <select 
             value={selectedCustomerId}
             onChange={(e) => setSelectedCustomerId(e.target.value)}
-            className="mt-1 block w-full rounded-md border border-gray-300 p-2 shadow-sm focus:border-brand-500 focus:ring-brand-500"
+            className="mt-1 block w-full rounded-xl border-2 border-brand-100 p-3 bg-brand-50/30 text-gray-800 shadow-sm focus:border-brand-500 focus:ring-brand-500 outline-none transition-all"
           >
             <option value="">Select Customer</option>
             {customers.map(c => (
@@ -136,21 +130,21 @@ const CollectionForm: React.FC<CollectionFormProps> = ({ customers, settings, on
             ))}
           </select>
           {selectedCustomer && (
-             <p className="text-xs text-gray-500 mt-1">
+             <p className="text-xs text-brand-600 mt-2 ml-1 font-medium">
                Credit Limit: ${selectedCustomer.credit_limit} | Period: {selectedCustomer.credit_period_days} days
              </p>
           )}
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">Payment Type</label>
-          <div className="grid grid-cols-4 gap-2 mt-1">
+          <label className="block text-sm font-semibold text-gray-700 mb-2">Payment Type</label>
+          <div className="grid grid-cols-4 gap-3">
             {Object.values(PaymentType).map(type => (
               <button
                 key={type}
                 type="button"
                 onClick={() => setPaymentType(type)}
-                className={`p-2 text-sm rounded-md border ${paymentType === type ? 'bg-brand-500 text-white border-brand-500' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'}`}
+                className={`p-3 text-sm font-bold rounded-xl border-2 transition-all ${paymentType === type ? 'bg-brand-500 text-white border-brand-500 shadow-lg scale-105' : 'bg-white text-brand-600 border-brand-100 hover:bg-brand-50'}`}
               >
                 {type}
               </button>
@@ -159,29 +153,29 @@ const CollectionForm: React.FC<CollectionFormProps> = ({ customers, settings, on
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700">Amount</label>
+          <label className="block text-sm font-semibold text-gray-700 mb-1">Amount</label>
           <input
             type="number"
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
-            className="mt-1 block w-full rounded-md border border-gray-300 p-2 shadow-sm focus:border-brand-500 focus:ring-brand-500"
+            className="mt-1 block w-full rounded-xl border-2 border-brand-100 p-3 bg-brand-50/30 text-gray-800 shadow-sm focus:border-brand-500 focus:ring-brand-500 outline-none transition-all font-mono text-lg"
             placeholder="0.00"
           />
         </div>
 
         {paymentType === PaymentType.CHEQUE && (
-          <div className="border-t pt-4 mt-4 space-y-4">
+          <div className="bg-brand-50/50 p-4 rounded-2xl border border-brand-100 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold text-gray-700">Cheque Details</h3>
+              <h3 className="text-sm font-bold text-brand-700 uppercase tracking-wider">Cheque Details</h3>
               {cameraEnabled && (
                 <>
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center text-sm text-brand-600 hover:text-brand-700"
+                    className="flex items-center text-sm font-bold text-brand-600 hover:text-brand-700 bg-white px-3 py-1 rounded-lg border border-brand-200"
                   >
-                    <Camera size={16} className="mr-1" />
-                    Scan Cheque
+                    <Camera size={16} className="mr-2" />
+                    Scan
                   </button>
                   <input
                     type="file"
@@ -196,11 +190,13 @@ const CollectionForm: React.FC<CollectionFormProps> = ({ customers, settings, on
             </div>
 
             {chequeImage && (
-              <div className="relative h-40 w-full bg-gray-100 rounded-md overflow-hidden">
+              <div className="relative h-48 w-full bg-white rounded-xl overflow-hidden border-2 border-brand-100 shadow-inner">
                 <img src={chequeImage} alt="Cheque" className="h-full w-full object-contain" />
                 {isAnalyzing && (
-                  <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white">
-                    <Loader2 className="animate-spin mr-2" /> Analyzing...
+                  <div className="absolute inset-0 bg-brand-500/30 backdrop-blur-sm flex items-center justify-center text-white">
+                    <div className="bg-white/90 p-4 rounded-2xl flex items-center text-brand-700 shadow-xl">
+                      <Loader2 className="animate-spin mr-3" /> <span className="font-bold">AI Analyzing...</span>
+                    </div>
                   </div>
                 )}
               </div>
@@ -208,56 +204,56 @@ const CollectionForm: React.FC<CollectionFormProps> = ({ customers, settings, on
 
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-gray-500">Cheque Number</label>
+                <label className="block text-xs font-bold text-brand-600 mb-1">Cheque Number</label>
                 <input
                   type="text"
                   value={chequeNumber}
                   onChange={(e) => setChequeNumber(e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-gray-300 p-2 text-sm"
+                  className="block w-full rounded-lg border border-brand-200 p-2 text-sm bg-white focus:ring-1 focus:ring-brand-500 outline-none"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500">Realize Date</label>
+                <label className="block text-xs font-bold text-brand-600 mb-1">Realize Date</label>
                 <input
                   type="date"
                   value={realizeDate}
                   onChange={(e) => setRealizeDate(e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-gray-300 p-2 text-sm"
+                  className="block w-full rounded-lg border border-brand-200 p-2 text-sm bg-white focus:ring-1 focus:ring-brand-500 outline-none"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500">Bank</label>
+                <label className="block text-xs font-bold text-brand-600 mb-1">Bank</label>
                 <input
                   type="text"
                   value={bank}
                   onChange={(e) => setBank(e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-gray-300 p-2 text-sm"
+                  className="block w-full rounded-lg border border-brand-200 p-2 text-sm bg-white focus:ring-1 focus:ring-brand-500 outline-none"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-500">Branch</label>
+                <label className="block text-xs font-bold text-brand-600 mb-1">Branch</label>
                 <input
                   type="text"
                   value={branch}
                   onChange={(e) => setBranch(e.target.value)}
-                  className="mt-1 block w-full rounded-md border border-gray-300 p-2 text-sm"
+                  className="block w-full rounded-lg border border-brand-200 p-2 text-sm bg-white focus:ring-1 focus:ring-brand-500 outline-none"
                 />
               </div>
             </div>
           </div>
         )}
 
-        <div className="flex justify-end space-x-3 pt-4 border-t">
+        <div className="flex justify-end space-x-3 pt-6 border-t border-brand-50">
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 border border-gray-300 rounded-md text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="px-6 py-3 rounded-xl text-sm font-bold text-gray-500 hover:bg-gray-100 transition-all"
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-brand-600 hover:bg-brand-700"
+            className="px-8 py-3 bg-brand-600 text-white rounded-xl shadow-lg hover:bg-brand-700 active:scale-95 transition-all font-bold"
           >
             Save Collection
           </button>

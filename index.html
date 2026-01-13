@@ -13,6 +13,9 @@
               brand: {
                 50: '#f0f9ff',
                 100: '#e0f2fe',
+                200: '#bae6fd',
+                300: '#7dd3fc',
+                400: '#38bdf8',
                 500: '#0ea5e9',
                 600: '#0284c7',
                 700: '#0369a1',
@@ -23,6 +26,20 @@
         }
       }
     </script>
+    <style>
+      /* Global override for input boxes to prevent dark/black backgrounds */
+      input:not([type="checkbox"]):not([type="radio"]), 
+      select, 
+      textarea {
+        background-color: #f0f9ff !important; /* brand-50 */
+        border-color: #bae6fd !important; /* brand-200 */
+        color: #0c4a6e !important; /* brand-900 */
+      }
+      input:focus, select:focus, textarea:focus {
+        border-color: #0ea5e9 !important; /* brand-500 */
+        box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2) !important;
+      }
+    </style>
   <script type="importmap">
 {
   "imports": {
@@ -36,7 +53,7 @@
 }
 </script>
 </head>
-  <body class="bg-gray-50 text-gray-900 h-screen overflow-hidden">
+  <body class="bg-brand-50 text-gray-900 h-screen overflow-hidden">
     <div id="root" class="h-full w-full"></div>
     <script type="module" src="/index.tsx"></script>
   </body>
