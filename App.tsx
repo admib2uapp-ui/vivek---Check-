@@ -11,7 +11,8 @@ import {
   setDoc, 
   deleteDoc,
   query,
-  orderBy 
+  orderBy,
+  writeBatch
 } from 'firebase/firestore';
 import { auth, db } from './services/firebase';
 
@@ -114,12 +115,28 @@ const App: React.FC = () => {
       await addDoc(collection(db, 'audit_logs'), {
         timestamp: new Date().toISOString(),
         action,
-        performedBy: user.uid, // Required by rules: performedBy == request.auth.uid
+        performedBy: user.uid,
         userName: user.name,
         details
       });
     } catch (e) {
       console.error("Audit log failed:", e);
+    }
+  };
+
+  const handleReconcile = async (ids: string[], newStatus: CollectionStatus) => {
+    if (!user) return;
+    try {
+      const batch = writeBatch(db);
+      ids.forEach(id => {
+        const ref = doc(db, 'collections', id);
+        batch.update(ref, { status: newStatus });
+      });
+      await batch.commit();
+      await addAuditLog('RECONCILE', `Batch updated ${ids.length} collections to ${newStatus}`);
+    } catch (e) {
+      console.error("Reconciliation save failed", e);
+      alert("Failed to save reconciliation results.");
     }
   };
 
@@ -135,13 +152,13 @@ const App: React.FC = () => {
     try {
       await addDoc(collection(db, 'collections'), {
         ...c,
-        createdBy: user.uid // Required by rules: createdBy == request.auth.uid
+        createdBy: user.uid
       });
       await addAuditLog('CREATE_COLLECTION', `Recorded payment from customer ${c.customer_id}`);
       setShowCollectionModal(false);
     } catch (e: any) {
       console.error("Save collection failed:", e);
-      alert(`Permission Denied: ${e.message}. Ensure 'createdBy' field is included as per rules.`);
+      alert(`Permission Denied: ${e.message}`);
     }
   };
 
@@ -151,12 +168,11 @@ const App: React.FC = () => {
     try {
       await setDoc(doc(db, 'customers', customer_id), {
         ...data,
-        createdBy: user.uid // Required by rules: createdBy == request.auth.uid
+        createdBy: user.uid
       });
       await addAuditLog('CREATE_CUSTOMER', `Created customer ${c.business_name}`);
     } catch (e: any) {
       console.error("Add customer failed:", e);
-      alert(`Save failed: ${e.message}. Check if 'createdBy' matches your login.`);
     }
   };
 
@@ -168,7 +184,6 @@ const App: React.FC = () => {
       await addAuditLog('UPDATE_CUSTOMER', `Updated customer ${c.business_name}`);
     } catch (e) {
       console.error("Update customer failed:", e);
-      alert("Permission Denied: Only the owner who created this customer can update it.");
     }
   };
 
@@ -224,7 +239,6 @@ const App: React.FC = () => {
       alert("Settings saved successfully.");
     } catch (e) {
       console.error("Settings update failed:", e);
-      alert("Failed to save settings. You might need to add a security rule for /system/settings.");
     }
   };
 
@@ -321,34 +335,12 @@ const App: React.FC = () => {
           )}
           {currentView === 'USERS' && <UserManager users={usersList} onAddUser={handleAddUser} onUpdateUser={handleUpdateUser} onDeleteUser={handleDeleteUser} />}
           {currentView === 'CHEQUES' && <ChequeManager collections={collections} />}
+          {currentView === 'RECONCILIATION' && <Reconciliation collections={collections} onReconcile={handleReconcile} />}
           {currentView === 'REPORTS' && <Reports collections={collections} customers={customers} routes={routes} />}
           {currentView === 'AUDIT' && <AuditLogs logs={auditLogs} />}
           {currentView === 'LEDGER' && <Ledger entries={ledger} />}
           {currentView === 'SETTINGS' && (
-            <div className="space-y-6">
-              <Settings settings={settings} onSave={handleSaveSettings} />
-              {user.role === 'ADMIN' && (
-                <div className="max-w-2xl mx-auto px-4 pb-12">
-                   <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/30 rounded-2xl p-6">
-                      <div className="flex items-center gap-3 mb-4">
-                        <ShieldAlert className="text-amber-600" size={24} />
-                        <h3 className="text-lg font-bold text-amber-800 dark:text-amber-200">Firebase Security Rules</h3>
-                      </div>
-                      <p className="text-sm text-amber-700 dark:text-amber-400 mb-6">
-                        Your rules enforce 'createdBy' and 'performedBy' fields. If you experience save issues, click below to verify your logic in the console.
-                      </p>
-                      <a 
-                        href="https://console.firebase.google.com/u/2/project/studio-3790385784-4778c/firestore/databases/-default-/security/rules" 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center px-6 py-3 bg-amber-600 text-white rounded-xl font-bold shadow-lg hover:bg-amber-700 transition-all gap-2"
-                      >
-                        <ExternalLink size={18} /> Configure Security Rules
-                      </a>
-                   </div>
-                </div>
-              )}
-            </div>
+            <Settings settings={settings} onSave={handleSaveSettings} />
           )}
         </div>
 

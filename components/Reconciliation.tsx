@@ -18,7 +18,6 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ collections, onReconcil
     const file = e.target.files?.[0];
     if (file) {
       // Simulate statement parsing
-      // We look for pending cheques to create a mock "matching" scenario
       const mockStatement: BankStatementEntry[] = collections
         .filter(c => c.payment_type === PaymentType.CHEQUE && c.status === CollectionStatus.PENDING)
         .slice(0, 3)
@@ -45,8 +44,6 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ collections, onReconcil
 
   const runReconciliationProcess = () => {
     setIsProcessing(true);
-    
-    // Simulate server/AI logic delay
     setTimeout(() => {
       const matches: {collection: Collection, entry: BankStatementEntry}[] = [];
       const unmatched: Collection[] = [];
@@ -54,7 +51,6 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ collections, onReconcil
       const pendingCheques = collections.filter(c => c.payment_type === PaymentType.CHEQUE && c.status === CollectionStatus.PENDING);
 
       pendingCheques.forEach(col => {
-        // Core verification: Cheque number and amount must match exactly
         const match = statementData.find(entry => 
           entry.cheque_number === col.cheque_number && 
           entry.amount === col.amount
@@ -70,7 +66,7 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ collections, onReconcil
       setMatchedItems(matches);
       setUnmatchedCollections(unmatched);
       setIsProcessing(false);
-      setActiveStep(2); // Move to Results/Review step
+      setActiveStep(2);
     }, 1200);
   };
 
@@ -81,7 +77,6 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ collections, onReconcil
     if (clearedIds.length > 0) onReconcile(clearedIds, CollectionStatus.REALIZED);
     if (returnedIds.length > 0) onReconcile(returnedIds, CollectionStatus.RETURNED);
     
-    // Reset workflow
     setActiveStep(1);
     setStatementData([]);
     setMatchedItems([]);
@@ -89,7 +84,7 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ collections, onReconcil
   };
 
   return (
-    <div className="p-6 h-full overflow-y-auto pb-24">
+    <div className="p-6 h-full overflow-y-auto pb-24 bg-gray-50 dark:bg-slate-950">
       <div className="mb-8">
         <h1 className="text-2xl font-bold text-brand-800 dark:text-slate-100 flex items-center gap-2">
           <Landmark className="text-brand-600" /> Bank Reconciliation
@@ -99,7 +94,6 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ collections, onReconcil
 
       {activeStep === 1 && (
         <div className="max-w-3xl mx-auto space-y-8">
-          {/* Progress Indicator */}
           <div className="flex items-center justify-center gap-4 mb-8">
              <div className="flex flex-col items-center">
                 <div className="w-10 h-10 rounded-full bg-brand-600 text-white flex items-center justify-center font-bold">1</div>
@@ -147,7 +141,7 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ collections, onReconcil
                 className="group px-14 py-5 bg-brand-600 text-white rounded-2xl hover:bg-brand-700 font-extrabold shadow-2xl flex items-center gap-3 transition-all active:scale-95 disabled:opacity-50"
               >
                 {isProcessing ? <RefreshCw className="animate-spin" size={24} /> : <RefreshCw size={24} />}
-                {isProcessing ? 'Processing Data...' : 'Start Reconciliation Process'}
+                {isProcessing ? 'Processing Data...' : 'Reconciliation (Verify Matches)'}
                 <ArrowRight className="ml-2 group-hover:translate-x-1 transition-transform" />
               </button>
             </div>
@@ -232,7 +226,7 @@ const Reconciliation: React.FC<ReconciliationProps> = ({ collections, onReconcil
                 disabled={matchedItems.length === 0}
              >
                 <CheckCircle size={20} />
-                Confirm Reconciliation
+                Confirm and Save Status Changes
              </button>
           </div>
         </div>
