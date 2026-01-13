@@ -13,7 +13,7 @@ import {
   query,
   orderBy 
 } from 'firebase/firestore';
-import { auth, db } from './services/firebase';
+import { auth, db, provisionAuthUserAndSendPasswordSetupEmail } from './services/firebase';
 
 import Dashboard from './components/Dashboard';
 import CollectionForm from './components/CollectionForm';
@@ -28,6 +28,35 @@ import AuditLogs from './components/AuditLogs';
 import UserManager from './components/UserManager';
 
 type View = 'DASHBOARD' | 'COLLECTIONS' | 'CUSTOMERS' | 'CHEQUES' | 'RECONCILIATION' | 'REPORTS' | 'SETTINGS' | 'LEDGER' | 'AUDIT' | 'USERS';
+
+const normalizeCollection = (data: any, id: string): Collection => {
+  const createdBy = data?.createdBy ?? data?.created_by;
+  return {
+    ...(data || {}),
+    ...(createdBy ? { createdBy } : {}),
+    collection_id: id
+  } as Collection;
+};
+
+const normalizeCustomer = (data: any, id: string): Customer => {
+  const createdBy = data?.createdBy ?? data?.created_by;
+  return {
+    ...(data || {}),
+    ...(createdBy ? { createdBy } : {}),
+    customer_id: id
+  } as Customer;
+};
+
+const normalizeAuditLog = (data: any, id: string): AuditLog => {
+  const performedBy = data?.performedBy ?? data?.performed_by;
+  const userName = data?.userName ?? data?.user_name;
+  return {
+    ...(data || {}),
+    ...(performedBy ? { performedBy } : {}),
+    ...(userName ? { userName } : {}),
+    log_id: id
+  } as AuditLog;
+};
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(null);
@@ -71,15 +100,29 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  // Ensure role reflects Firestore `/users/{uid}` document if present
+  useEffect(() => {
+    if (!user?.uid) return;
+    const unsub = onSnapshot(doc(db, 'users', user.uid), (d) => {
+      if (d.exists()) {
+        const data = d.data() as Partial<User>;
+        if (data.role && data.role !== user.role) {
+          setUser((prev) => prev ? { ...prev, role: data.role as UserRole, name: data.name || prev.name, email: data.email || prev.email } : prev);
+        }
+      }
+    });
+    return () => unsub();
+  }, [user?.uid]);
+
   useEffect(() => {
     if (!user) return;
 
     const unsubCollections = onSnapshot(query(collection(db, 'collections'), orderBy('collection_date', 'desc')), (snapshot) => {
-      setCollections(snapshot.docs.map(d => ({ ...d.data(), collection_id: d.id } as Collection)));
+      setCollections(snapshot.docs.map(d => normalizeCollection(d.data(), d.id)));
     });
 
     const unsubCustomers = onSnapshot(collection(db, 'customers'), (snapshot) => {
-      setCustomers(snapshot.docs.map(d => ({ ...d.data(), customer_id: d.id } as Customer)));
+      setCustomers(snapshot.docs.map(d => normalizeCustomer(d.data(), d.id)));
     });
 
     const unsubRoutes = onSnapshot(collection(db, 'routes'), (snapshot) => {
@@ -95,7 +138,7 @@ const App: React.FC = () => {
     });
 
     const unsubAudit = onSnapshot(query(collection(db, 'audit_logs'), orderBy('timestamp', 'desc')), (snapshot) => {
-      setAuditLogs(snapshot.docs.map(d => ({ ...d.data(), log_id: d.id } as AuditLog)));
+      setAuditLogs(snapshot.docs.map(d => normalizeAuditLog(d.data(), d.id)));
     });
 
     return () => {
@@ -184,15 +227,17 @@ const App: React.FC = () => {
     }
   };
 
-  const handleAddUser = async (newUser: User) => {
+  const handleAddUser = async (newUser: Omit<User, 'uid'>) => {
     if (!user) return;
-    const { uid, ...data } = newUser;
     try {
-      await setDoc(doc(db, 'users', uid), { ...data, id: uid });
-      await sendPasswordResetEmail(auth, newUser.email);
+      const createdAuthUser = await provisionAuthUserAndSendPasswordSetupEmail(newUser.email);
+      const uid = createdAuthUser.uid;
+
+      await setDoc(doc(db, 'users', uid), { ...newUser, id: uid });
       addAuditLog('CREATE_USER', `Created user account for ${newUser.name}`);
     } catch (err) {
       console.error("User creation/email failed", err);
+      alert("User creation failed. If the email already exists in Firebase Auth, use the reset button instead.");
     }
   };
 

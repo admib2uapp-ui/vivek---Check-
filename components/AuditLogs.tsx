@@ -40,7 +40,9 @@ const AuditLogs: React.FC<AuditLogsProps> = ({ logs }) => {
                       <Clock size={14} className="mr-2 text-gray-400" />
                       {new Date(log.timestamp).toLocaleString()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{log.performed_by}</td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                      {log.userName || log.performedBy || 'Unknown'}
+                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <span className="px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-100 text-blue-800">
                         {log.action}
