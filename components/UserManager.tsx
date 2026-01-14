@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { User, UserRole } from '../types';
 import { Plus, User as UserIcon, Shield, Mail, X, Save, Edit, Trash2, AlertTriangle, Key, Loader2, CheckCircle, CheckSquare, Square } from 'lucide-react';
-import { resetUserPassword } from '../services/firebase';
+import { createAuthUserAndSendPasswordResetEmail, resetUserPassword } from '../services/firebase';
 
 interface UserManagerProps {
   users: User[];
@@ -35,6 +35,7 @@ const UserManager: React.FC<UserManagerProps> = ({ users, onAddUser, onUpdateUse
   });
   const [resettingId, setResettingId] = useState<string | null>(null);
   const [successId, setSuccessId] = useState<string | null>(null);
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
 
   const handleOpenModal = (user?: User) => {
     if (user) {
@@ -62,26 +63,37 @@ const UserManager: React.FC<UserManagerProps> = ({ users, onAddUser, onUpdateUse
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (editingUser) {
-      onUpdateUser({
+      await onUpdateUser({
         ...editingUser,
         name: formData.name,
         email: formData.email,
         role: formData.role,
         permissions: formData.permissions
       });
-    } else {
-      onAddUser({
-        uid: `U-${Date.now()}`,
+      setIsModalOpen(false);
+      return;
+    }
+
+    setIsCreatingUser(true);
+    try {
+      const { uid } = await createAuthUserAndSendPasswordResetEmail(formData.email);
+      await onAddUser({
+        uid,
         name: formData.name,
         email: formData.email,
         role: formData.role,
         permissions: formData.permissions
       });
+      setIsModalOpen(false);
+    } catch (error: any) {
+      console.error('Failed to create user', error);
+      alert(error?.message || 'Failed to create user.');
+    } finally {
+      setIsCreatingUser(false);
     }
-    setIsModalOpen(false);
   };
 
   const handleDelete = () => {
@@ -218,8 +230,8 @@ const UserManager: React.FC<UserManagerProps> = ({ users, onAddUser, onUpdateUse
               )}
 
               <div className="pt-2">
-                <button type="submit" className="w-full flex justify-center items-center py-4 bg-brand-600 text-white rounded-xl font-bold shadow-lg hover:bg-brand-700 transition-all active:scale-95">
-                  <Save size={20} className="mr-2" /> {editingUser ? 'Update Account' : 'Create User Account'}
+                <button type="submit" disabled={isCreatingUser} className="w-full flex justify-center items-center py-4 bg-brand-600 text-white rounded-xl font-bold shadow-lg hover:bg-brand-700 transition-all active:scale-95 disabled:opacity-60">
+                  {isCreatingUser ? <Loader2 size={20} className="mr-2 animate-spin" /> : <Save size={20} className="mr-2" />} {editingUser ? 'Update Account' : 'Create User Account'}
                 </button>
               </div>
             </form>
