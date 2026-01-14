@@ -281,7 +281,7 @@ const CustomerManager: React.FC<CustomerManagerProps> = ({ customers, routes, on
         </div>
       )}
 
-      {isImportOpen && <ImportModal onImport={(c) => { onImport(c); setIsImportOpen(false); }} onClose={() => setIsImportOpen(false)} />}
+      {isImportOpen && <ImportModal routes={routes} onImport={(c) => { onImport(c); setIsImportOpen(false); }} onClose={() => setIsImportOpen(false)} />}
     </div>
   );
 };
