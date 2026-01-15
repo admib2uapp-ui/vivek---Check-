@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { LedgerEntry, GlobalSettings } from '../types';
-import { BookOpen, Search, ArrowUpDown, Trash2, CheckSquare, Square } from 'lucide-react';
+import { BookOpen, Search, Trash2, CheckSquare, Square } from 'lucide-react';
 import { formatFullAmount } from '../App';
 import { doc, writeBatch } from 'firebase/firestore';
 import { db } from '../services/firebase';
@@ -12,7 +12,6 @@ interface LedgerProps {
 
 const Ledger: React.FC<LedgerProps> = ({ entries, settings }) => {
   const [query, setQuery] = useState('');
-  const [sortOrder, setSortOrder] = useState<'A-Z' | 'Z-A' | 'NONE'>('NONE');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const filtered = useMemo(() => {
@@ -20,15 +19,9 @@ const Ledger: React.FC<LedgerProps> = ({ entries, settings }) => {
       e.description.toLowerCase().includes(query.toLowerCase()) || 
       e.reference_id.includes(query)
     );
-
-    if (sortOrder === 'A-Z') {
-      result.sort((a, b) => a.description.localeCompare(b.description));
-    } else if (sortOrder === 'Z-A') {
-      result.sort((a, b) => b.description.localeCompare(a.description));
-    }
     
     return result;
-  }, [entries, query, sortOrder]);
+  }, [entries, query]);
 
   const toggleSelect = (id: string) => {
     const next = new Set(selectedIds);
@@ -91,22 +84,15 @@ const Ledger: React.FC<LedgerProps> = ({ entries, settings }) => {
                   </button>
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Date</th>
-                <th 
-                  className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase cursor-pointer flex items-center gap-1 group tracking-wider"
-                  onClick={() => setSortOrder(sortOrder === 'A-Z' ? 'Z-A' : 'A-Z')}
-                >
-                  Description
-                  <ArrowUpDown size={12} className={`transition-opacity ${sortOrder === 'NONE' ? 'opacity-30 group-hover:opacity-100' : 'opacity-100'}`} />
-                </th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Collector</th>
                 <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Debit</th>
-                <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Credit</th>
                 <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Amount</th>
               </tr>
             </thead>
             <tbody className="bg-white dark:bg-slate-900 divide-y divide-gray-200 dark:divide-slate-800">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center text-gray-400 italic">No ledger entries found.</td>
+                  <td colSpan={5} className="px-6 py-12 text-center text-gray-400 italic">No ledger entries found.</td>
                 </tr>
               ) : (
                 filtered.map((entry) => (
@@ -117,9 +103,8 @@ const Ledger: React.FC<LedgerProps> = ({ entries, settings }) => {
                       </button>
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500 dark:text-slate-400 whitespace-nowrap">{entry.date}</td>
-                    <td className="px-6 py-4 text-sm font-bold text-gray-900 dark:text-slate-100">{entry.description}</td>
+                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-slate-400 whitespace-nowrap">{entry.collector || '-'}</td>
                     <td className="px-6 py-4 text-sm text-gray-600 dark:text-slate-400">{entry.debit_account}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600 dark:text-slate-400">{entry.credit_account}</td>
                     <td className="px-6 py-4 text-right font-bold text-brand-700 dark:text-brand-400 font-mono whitespace-nowrap">{formatFullAmount(entry.amount, settings.currency_code)}</td>
                   </tr>
                 ))

@@ -73,6 +73,7 @@ export interface LedgerEntry {
   date: string;
   description: string;
   reference_id: string; 
+  collector?: string;
   debit_account: string; 
   credit_account: string; 
   amount: number;

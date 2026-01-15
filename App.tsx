@@ -145,6 +145,7 @@ const App: React.FC = () => {
         date: c.collection_date,
         description: `Collection from ${customers.find(cust => cust.customer_id === c.customer_id)?.business_name || 'Customer'}`,
         reference_id: colRef.id,
+        collector: user.name,
         debit_account: c.payment_type === PaymentType.CHEQUE ? 'Cheques in Hand' : 'Cash',
         credit_account: `Customer: ${c.customer_id}`,
         amount: c.amount
