@@ -70,13 +70,52 @@ const CollectionForm: React.FC<CollectionFormProps> = ({ customers, settings, on
       .sort((a, b) => a.business_name.localeCompare(b.business_name));
   }, [customers, selectedRouteId]);
 
+  const compressImage = (base64String: string, quality: number = 0.7): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const maxWidth = 1200;
+        const maxHeight = 800;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > maxWidth) {
+            height = Math.round((height * maxWidth) / width);
+            width = maxWidth;
+          }
+        } else {
+          if (height > maxHeight) {
+            width = Math.round((width * maxHeight) / height);
+            height = maxHeight;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+        }
+        const compressedBase64 = canvas.toDataURL('image/jpeg', quality);
+        resolve(compressedBase64);
+      };
+      img.src = base64String;
+    });
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
     reader.onloadend = async () => {
-      const base64 = reader.result as string;
+      let base64 = reader.result as string;
+      
+      // Compress image to keep file size under 500KB
+      base64 = await compressImage(base64, 0.7);
+      
       setChequeImage(base64);
       setIsAnalyzing(true);
       setError(null);
